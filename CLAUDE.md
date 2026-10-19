@@ -6,9 +6,9 @@ This is `vibemetrics/i18n-tasks-rs`, Bondata's fork of `rwojsznis/i18n-tasks-rs`
 
 **`main` changes by merges only.** It is never rebased and never force-pushed.
 
-**Review feedback.** Copilot's review is advice, not a gate. Fix a real defect or a real risk. Answer a nitpick in one line, saying why the code stays, and resolve the thread.
+**Review feedback.** Copilot's findings are advice. Fix a real defect or a real risk. Answer a nitpick in one line, saying why the code stays, and resolve the thread.
 
-**Merging.** Pull requests here get no human review. A PR merges when Copilot's review recommends it, and the agent merges it itself: squash, with the PR's title and body.
+**Merging.** Pull requests here get no human review. A PR merges when Copilot's review recommends it, and the agent merges it itself: squash, with the PR's title and body. A sync from `upstream/main` is the exception: it lands as a merge commit, so upstream's history stays in ours and the next sync does not conflict again.
 
 **Releasing.** A tag `vX.Y.Z-bondata.N` on `main` publishes a GitHub release with the Linux x86_64 tarball and `SHA256SUMS.txt`. `X.Y.Z` is the upstream version the fork is built on, and `N` counts our releases on it. A tag is new for each release and never moved:
 

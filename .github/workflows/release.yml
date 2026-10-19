@@ -17,7 +17,7 @@ env:
 jobs:
   linux:
     name: Linux x86_64
-    # The oldest GitHub-hosted image, so the binary runs on glibc >= 2.35.
+    # The runner's glibc (2.35) is the oldest the binary runs on; a newer runner raises it.
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     steps:
