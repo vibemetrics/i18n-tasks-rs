@@ -34,7 +34,12 @@ pub struct MissingReport {
 /// compiling it per key made every pattern a per-key cost.
 ///
 /// ref: missing_keys.rb#locale_key_missing?
-fn locale_key_missing(store: &Store, ignore: &PatternSet, locale: &str, key: &str) -> bool {
+pub(crate) fn locale_key_missing(
+    store: &Store,
+    ignore: &PatternSet,
+    locale: &str,
+    key: &str,
+) -> bool {
     !store.key_value(locale, key) && !store.external_has(locale, key) && !ignore.is_match(key)
 }
 

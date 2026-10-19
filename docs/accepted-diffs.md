@@ -763,3 +763,36 @@ different values get a warning that names both files.
 Under `keep_order` the read order no longer decides a file's key order. A
 key that a later file replaces takes that file's position, and keys that the
 pattern router moves into a file come after the file's own keys.
+
+## 34. `translate-missing` — OpenAI only, opt-in writes, no English left behind
+
+**Gem.** `missing.rb:40-57` translates the `diff` missing keys of the given
+locales through the backend in `translation.backend`, merges them and writes at
+once. The OpenAI backend (`openai_translator.rb`) reads its key, model, prompts
+and temperature from the `translation:` config section, where an app usually
+reaches `OPENAI_API_KEY` and `OPENAI_MODEL` through ERB.
+`base_translator.rb:56-62` keeps a slice that fails as untranslated source text,
+so a failed request writes the base locale's text into the target locale and
+the command still exits 0. A model that drops a `X__n` placeholder loses its
+interpolation without a word.
+
+**Here.**
+
+- OpenAI is the only backend, and there is no `translation:` section: B3 keeps
+  ERB out of the config, so `OPENAI_API_KEY`, `OPENAI_MODEL` (default
+  `gpt-4o-mini`) and `OPENAI_BASE_URL` come from the environment. The request
+  is the gem's: its default system prompt, temperature 0, a JSON object
+  answer, batches of at most 50 strings, `%{x}` sent as `X__n`.
+  `openai_system_prompt`, `openai_locale_prompts`, `openai_temperature`,
+  `--from`, `--pattern` and `--backend` are not ported.
+- Writing follows B8: without `--write` the command lists the keys and calls
+  nobody. `--write` without a key fails before any request.
+- A batch fails as a whole when the request fails, the answer holds another
+  number of strings, or a value comes back with other interpolation variables
+  than its source. Its keys are not written and stay missing for the next run,
+  the error is printed per locale, and the command exits 2 after it writes the
+  batches that succeeded.
+- The gem sends HTML keys and plain keys in separate slices. Its OpenAI
+  backend gives both the same options, so here they share a batch.
+- Only the files that receive a key are written. They are written in the
+  normalized form, as `normalize --write` writes them.

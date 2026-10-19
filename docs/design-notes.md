@@ -176,7 +176,7 @@ Not implemented, on purpose.
 
 | Dropped | Reason |
 |---|---|
-| All translation backends, `translate-missing`, `add-missing` | Out of scope. `add-missing` also needs `Inflector.humanize` templating. |
+| Every translation backend but OpenAI, the `translation:` config section, `add-missing` | Out of scope. `translate-missing` reads its OpenAI key and model from the environment (see accepted diff 34). `add-missing` also needs `Inflector.humanize` templating. |
 | Custom scanners, `ast_matchers`, routers and adapters named in the config | Each is a Ruby class name resolved with `ActiveSupport::Inflector.constantize`. There is no Ruby runtime. |
 | The ERB config file | See B3. |
 | The whitequark `parser` backend, the `ast` gem, `PatternMapper` | Prism only. Two parsers is the gem's main source of behaviour drift. |
