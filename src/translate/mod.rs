@@ -276,7 +276,7 @@ pub fn merge(
     let pattern = PatternRouter::new(cfg);
     let mut routed = Vec::with_capacity(translated.len());
     {
-        let conservative = ConservativeRouter::new(&pattern, store);
+        let conservative = ConservativeRouter::new(&pattern, store, &cfg.root);
         for LocaleLeaves { locale, leaves } in translated {
             if leaves.is_empty() {
                 continue;

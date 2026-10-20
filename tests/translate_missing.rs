@@ -334,6 +334,28 @@ fn an_untouched_file_holding_two_locales_does_not_block_the_write() {
 }
 
 #[test]
+fn a_project_inside_a_directory_named_like_a_locale_keeps_its_root() {
+    let p = Project::new("root/en");
+    p.write(
+        "config/i18n-tasks.yml",
+        "base_locale: en\nlocales: [en, de]\ndata:\n  read:\n    - config/locales/%{locale}.yml\nsearch:\n  paths: [app/]\n",
+    )
+    .write("config/locales/en.yml", "en:\n  greeting: Hello\n");
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        p.read("config/locales/de.yml").contains("German: Hello"),
+        "{out}"
+    );
+    assert!(!p.root.with_file_name("de").exists());
+}
+
+#[test]
 fn a_new_key_is_never_written_into_another_locales_file() {
     let p = project("foreign-file");
     let en = "en:\n  greeting: Hello\n";
