@@ -1,5 +1,5 @@
-//! The shape of `-f json`: which top-level fields each check emits, and in
-//! which order.
+//! The shape of the JSON envelope (`-f report`, and `-f json` outside
+//! `missing`): which top-level fields each check emits, and in which order.
 //!
 //! `find -f json` exists so this tool and the gem can be compared over the same
 //! project, so the JSON is an interface, not a debug dump. These tests are

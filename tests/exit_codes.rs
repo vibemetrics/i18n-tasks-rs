@@ -356,7 +356,7 @@ fn health_refuses_an_empty_data_set_from_the_cli() {
     assert!(text.contains("no keys detected"), "{text}");
 }
 
-/// Every check supports `--format json`, including the four `health` runs.
+/// Every check emits the JSON envelope, including the four `health` runs.
 #[test]
 fn every_check_emits_json() {
     let p = Project::new(

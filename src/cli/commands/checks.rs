@@ -2,7 +2,7 @@
 //!
 //! Six commands over two flag sets, so one method per check rather than one
 //! module each. Every one of them ends in `emit`, which is where the exit code
-//! comes from.
+//! comes from, except `missing -f json`, which prints the gem's tree instead.
 
 use crate::cli::args::{Common, Format};
 use crate::cli::commands::emit;

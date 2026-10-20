@@ -91,9 +91,9 @@ i18n-tasks-rs migrate-config [-i/--from PATH] [-o/--to PATH]
 
 Project-reading commands also accept `-c/--config PATH`, `-f/--format
 text|json|report`, `--root PATH`, and `-j/--jobs N`. `missing -f json` prints
-the gem's JSON; `-f report` is this tool's JSON envelope on every command. `remove-unused`, `normalize` and
-`clean-config` do not write unless `--write` is present; `translate-missing`
-writes, as the gem's does. Use each command's
+the gem's JSON; `-f report` is this tool's JSON envelope on every command.
+`remove-unused`, `normalize` and `clean-config` do not write unless `--write`
+is present; `translate-missing` writes, as the gem's does. Use each command's
 `--help` output as the complete option reference.
 
 ## Config syntax

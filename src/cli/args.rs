@@ -47,8 +47,11 @@ pub(crate) struct Common {
 /// diff 13.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub(crate) enum Format {
+    /// A plain table.
     Text,
+    /// The gem's JSON for `missing`; the report envelope elsewhere.
     Json,
+    /// This tool's JSON envelope, on every command.
     Report,
 }
 

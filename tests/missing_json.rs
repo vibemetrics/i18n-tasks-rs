@@ -4,7 +4,8 @@
 //! ref: lib/i18n/tasks/command/options/data.rb#print_forest
 //!
 //! The goldens are what i18n-tasks 1.1.2 printed for `tests/fixtures/missing_json`,
-//! with the arguments named in each test.
+//! with the arguments named in each test, run from the fixture directory so it
+//! reads `config/i18n-tasks.yml` there.
 
 use std::process::Command;
 
@@ -74,13 +75,4 @@ fn nothing_missing_is_an_empty_object() {
         missing(&["-t", "plural", "-f", "json", "en"]),
         (0, "{}\n".to_string())
     );
-}
-
-#[test]
-fn the_report_format_keeps_the_rows_envelope() {
-    let (code, out) = missing(&["-t", "diff", "-f", "report"]);
-    assert_eq!(code, 1);
-    let json: serde_json::Value = serde_json::from_str(&out).unwrap();
-    assert_eq!(json["check"], "missing");
-    assert!(json["rows"].as_array().is_some_and(|r| !r.is_empty()));
 }

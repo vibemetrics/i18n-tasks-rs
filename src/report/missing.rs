@@ -124,11 +124,12 @@ fn missing_diff(cfg: &Config, store: &Store, locales: &[String]) -> Vec<KeyRow> 
             key: d.key,
             value: Some(d.leaf.value.to_display_string()),
             reason: Some(Reason::Diff {
-                present_in: d.compared_to.to_string(),
+                present_in: d.present_in.to_string(),
             }),
         })
         .collect();
-    // The two directions can report the same key twice.
+    // Plural forms share one depluralized key, and two locales can hold a key
+    // the base lacks.
     let mut seen = BTreeSet::new();
     rows.retain(|r| seen.insert((r.locale.clone(), r.key.clone())));
     rows
@@ -140,15 +141,15 @@ struct DiffLeaf<'a> {
     locale: &'a str,
     key: String,
     leaf: &'a Leaf,
-    compared_to: &'a str,
+    present_in: &'a str,
 }
 
 /// ref: missing_keys.rb#missing_diff_forest
 fn diff_selection<'a>(cfg: &Config, store: &'a Store, locales: &'a [String]) -> Vec<DiffLeaf<'a>> {
     let base = store.base_locale.as_str();
     let mut out = Vec::new();
-    let mut push = |locale: &'a str, compared_to: &'a str, ignore: &PatternSet| {
-        let Some(source) = store.tree(compared_to) else {
+    let mut push = |locale: &'a str, present_in: &'a str, ignore: &PatternSet| {
+        let Some(source) = store.tree(present_in) else {
             return;
         };
         out.extend(
@@ -156,7 +157,7 @@ fn diff_selection<'a>(cfg: &Config, store: &'a Store, locales: &'a [String]) -> 
                 locale,
                 key,
                 leaf,
-                compared_to,
+                present_in,
             }),
         );
     };

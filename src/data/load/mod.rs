@@ -75,8 +75,9 @@ impl Value {
         }
     }
 
-    /// Ruby `#to_json` of what Psych reads: a plain number is a JSON number,
-    /// a Symbol inside a sequence is its name, and a date stays as written.
+    /// Ruby `#to_json` of what Psych reads: a plain number is the number Psych
+    /// reads, a Symbol inside a sequence is its name, and anything else plain,
+    /// a date included, stays as written. Accepted diff 13.
     pub fn to_json(&self) -> serde_json::Value {
         match self {
             Value::Str(s) => serde_json::Value::String(s.clone()),
@@ -85,13 +86,8 @@ impl Value {
             Value::Plain(s) => {
                 if let Some(name) = s.strip_prefix(':') {
                     serde_json::Value::String(name.to_string())
-                } else if let Ok(n) = s.parse::<i64>() {
-                    serde_json::Value::from(n)
-                } else if let Some(n) = s.parse::<f64>().ok().and_then(serde_json::Number::from_f64)
-                {
-                    serde_json::Value::Number(n)
                 } else {
-                    serde_json::Value::String(s.clone())
+                    yaml::psych_number(s).unwrap_or_else(|| serde_json::Value::String(s.clone()))
                 }
             }
             Value::Seq(items) => items.iter().map(Value::to_json).collect(),
@@ -893,6 +889,23 @@ mod tests {
             seq.to_json().to_string(),
             r#"["day",5,1.5,"2024-01-31",null,false,"5"]"#
         );
+        let psych = |plain: &str| Value::Plain(plain.into()).to_json().to_string();
+        assert_eq!(psych("010"), "8");
+        assert_eq!(psych("-010"), "-8");
+        assert_eq!(psych("0x1f"), "31");
+        assert_eq!(psych("0b101"), "5");
+        assert_eq!(psych("1_000"), "1000");
+        assert_eq!(psych("1,000"), "1000");
+        assert_eq!(psych("+5"), "5");
+        assert_eq!(psych("1:30"), "5400");
+        assert_eq!(psych("1:30:15"), "5415");
+        assert_eq!(psych("-1:30"), "-1800");
+        assert_eq!(psych("1:30.5"), "5430.0");
+        assert_eq!(psych("1e5"), r#""1e5""#);
+        assert_eq!(psych("1.5e+3"), "1500.0");
+        assert_eq!(psych("1."), "1.0");
+        assert_eq!(psych("0o17"), r#""0o17""#);
+        assert_eq!(psych(".inf"), r#"".inf""#);
     }
 
     #[test]
