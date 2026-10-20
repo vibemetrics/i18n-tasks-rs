@@ -275,11 +275,23 @@ Blocker B1: the emitter never folds lines. The real project already sets
 `line_width: -1`, so this matches current behaviour exactly. The config key is
 therefore not part of the new format.
 
-## 13. Reports are plain text or JSON
+## 13. Reports are plain text, the gem's JSON, or the report envelope
 
-terminal-table and Rainbow are replaced with a plain aligned table. `--format
-json` is new; the gem has no JSON output. Every JSON envelope carries the config
-digest, so a differential run can prove both tools read the same settings.
+terminal-table and Rainbow are replaced with a plain aligned table.
+
+**Gem.** `-f json` prints the result tree as compact JSON
+(`command/options/data.rb#print_forest`): for `missing`,
+`{locale => nested tree}` sorted at every level, each leaf with its own value
+(`used` leaves `null`, `plural` leaves the locale's existing forms).
+
+**Here.** `missing -f json` prints exactly that, byte for byte
+(`tests/missing_json.rs`, against goldens recorded from gem 1.1.2). A YAML
+number is a JSON number, a Symbol inside a sequence is its name, and a date
+stays as written; inside a sequence, a mapping's keys come out sorted, where
+Ruby keeps their order. `-f report` is this port's envelope on every
+command. The other commands still print the envelope under `-f json` as well,
+because nobody reads their gem JSON. Every envelope carries the config digest,
+so a differential run can prove both tools read the same settings.
 
 The JSON is an interface, not a rendering of the table, so a reported row gives
 its reason as a tagged object rather than as the sentence the table prints:

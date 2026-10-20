@@ -75,6 +75,33 @@ impl Value {
         }
     }
 
+    /// Ruby `#to_json` of what Psych reads: a plain number is a JSON number,
+    /// a Symbol inside a sequence is its name, and a date stays as written.
+    pub fn to_json(&self) -> serde_json::Value {
+        match self {
+            Value::Str(s) => serde_json::Value::String(s.clone()),
+            Value::Nil => serde_json::Value::Null,
+            Value::Bool(b) => serde_json::Value::Bool(*b),
+            Value::Plain(s) => {
+                if let Some(name) = s.strip_prefix(':') {
+                    serde_json::Value::String(name.to_string())
+                } else if let Ok(n) = s.parse::<i64>() {
+                    serde_json::Value::from(n)
+                } else if let Some(n) = s.parse::<f64>().ok().and_then(serde_json::Number::from_f64)
+                {
+                    serde_json::Value::Number(n)
+                } else {
+                    serde_json::Value::String(s.clone())
+                }
+            }
+            Value::Seq(items) => items.iter().map(Value::to_json).collect(),
+            Value::Map(entries) => entries
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_json()))
+                .collect(),
+        }
+    }
+
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::Str(s) | Value::Plain(s) => Some(s),
@@ -848,6 +875,23 @@ mod tests {
             )])])
             .to_display_string(),
             "[{\"k\" => [\"v\"]}]"
+        );
+    }
+
+    #[test]
+    fn to_json_follows_ruby_to_json_of_what_psych_reads() {
+        let seq = Value::Seq(vec![
+            Value::Plain(":day".into()),
+            Value::Plain("5".into()),
+            Value::Plain("1.50".into()),
+            Value::Plain("2024-01-31".into()),
+            Value::Nil,
+            Value::Bool(false),
+            Value::Str("5".into()),
+        ]);
+        assert_eq!(
+            seq.to_json().to_string(),
+            r#"["day",5,1.5,"2024-01-31",null,false,"5"]"#
         );
     }
 
