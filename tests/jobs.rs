@@ -103,6 +103,7 @@ fn every_command_is_byte_identical_at_every_job_count() {
         "check-consistent-interpolations",
         "check-normalized",
         "health",
+        "translate-missing",
     ] {
         for format in ["text", "json"] {
             let (code, single) = p.run(&[command, "-f", format, "--jobs", "1"]);

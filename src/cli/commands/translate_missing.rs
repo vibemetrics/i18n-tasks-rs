@@ -3,7 +3,7 @@ use crate::cli::exit::ExitStatus;
 use crate::cli::out::{errln, out, outln};
 use i18n_tasks_rs::report::normalize;
 use i18n_tasks_rs::translate::openai::{DEFAULT_BASE_URL, DEFAULT_MODEL, OpenAi};
-use i18n_tasks_rs::translate::{self, Pending};
+use i18n_tasks_rs::translate::{self, LocaleLeaves};
 
 #[derive(clap::Args, Clone, Debug)]
 pub(crate) struct TranslateMissingArgs {
@@ -25,30 +25,35 @@ impl TranslateMissingArgs {
                 outln!("{}", translate::to_json(&s, &rows, false)?);
             } else {
                 out!("{}", translate::to_text(&rows, false));
-                outln!("Nothing was translated. Pass `--write` to translate and write them.");
+                if !rows.is_empty() {
+                    outln!("Nothing was translated. Pass `--write` to translate and write them.");
+                }
             }
             return Ok(ExitStatus::Ok);
         }
 
-        let client = client()?;
         let from = s.store.base_locale.clone();
         let mut translated = Vec::with_capacity(pending.len());
         let mut failed = 0;
-        for Pending { locale, leaves } in pending {
-            let result =
-                translate::translate(&leaves, |batch| client.translate(batch, &from, &locale));
-            for failure in &result.failures {
-                errln!(
-                    "{locale}: cannot translate {}: {}",
-                    failure.keys.join(", "),
-                    failure.error
-                );
-                failed += failure.keys.len();
+        if !pending.is_empty() {
+            let client = client()?;
+            for LocaleLeaves { locale, leaves } in pending {
+                errln!("{locale}: translating {} key(s)", leaves.len());
+                let result =
+                    translate::translate(&leaves, |batch| client.translate(batch, &from, &locale));
+                for failure in &result.failures {
+                    errln!(
+                        "{locale}: cannot translate {}: {}",
+                        failure.keys.join(", "),
+                        failure.error
+                    );
+                    failed += failure.keys.len();
+                }
+                translated.push(LocaleLeaves {
+                    locale,
+                    leaves: result.leaves,
+                });
             }
-            translated.push(Pending {
-                locale,
-                leaves: result.leaves,
-            });
         }
 
         let rows = translate::rows(&translated);

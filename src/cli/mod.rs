@@ -65,8 +65,9 @@ enum Command {
     Normalize(NormalizeArgs),
     /// Translate the keys the base locale has and a locale lacks, through OpenAI.
     ///
-    /// Reads OPENAI_API_KEY and OPENAI_MODEL (default gpt-4o-mini). Writing is
-    /// opt-in: without `--write` it only lists the keys.
+    /// Reads OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini) and
+    /// OPENAI_BASE_URL. Writing is opt-in: without `--write` it only lists the
+    /// keys.
     TranslateMissing(TranslateMissingArgs),
     /// Remove ignore rules that suppress no current issue.
     CleanConfig(CleanConfigArgs),

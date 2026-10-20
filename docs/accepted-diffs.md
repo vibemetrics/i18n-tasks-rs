@@ -782,17 +782,32 @@ interpolation without a word.
   ERB out of the config, so `OPENAI_API_KEY`, `OPENAI_MODEL` (default
   `gpt-4o-mini`) and `OPENAI_BASE_URL` come from the environment. The request
   is the gem's: its default system prompt, temperature 0, a JSON object
-  answer, batches of at most 50 strings, `%{x}` sent as `X__n`.
+  answer, `%{x}` sent as `X__n`. `OPENAI_BASE_URL` (default
+  `https://api.openai.com/v1`) has no gem counterpart.
   `openai_system_prompt`, `openai_locale_prompts`, `openai_temperature`,
   `--from`, `--pattern` and `--backend` are not ported.
+- Every request carries the JSON instruction once. The gem's
+  `system_prompt` (`openai_translator.rb:87`) `concat`s it onto the
+  `DEFAULT_SYSTEM_PROMPT` constant itself, so the nth request of a run carries
+  it n times. Both tools against one fake server: the same strings, the same
+  parameters, the same written values, and a first prompt equal byte for byte.
+- Only base-to-locale keys are translated. With the base among the locales,
+  the gem's `missing_diff_forest` (`missing_keys.rb:44-48`) also sends keys
+  that another locale has and the base lacks.
 - Writing follows B8: without `--write` the command lists the keys and calls
-  nobody. `--write` without a key fails before any request.
-- A batch fails as a whole when the request fails, the answer holds another
-  number of strings, or a value comes back with other interpolation variables
-  than its source. Its keys are not written and stay missing for the next run,
-  the error is printed per locale, and the command exits 2 after it writes the
-  batches that succeeded.
-- The gem sends HTML keys and plain keys in separate slices. Its OpenAI
-  backend gives both the same options, so here they share a batch.
-- Only the files that receive a key are written. They are written in the
-  normalized form, as `normalize --write` writes them.
+  nobody. `--write` with something to translate and no key fails before any
+  request.
+- The gem cuts the flat list of strings into slices of 50
+  (`openai_translator.rb:97`), so an array can straddle two requests. Here a
+  request holds whole keys, up to 50 strings, and a key that holds more goes
+  alone. The gem sends HTML keys and plain keys in separate slices; its OpenAI
+  backend gives both the same options, so here they share a request.
+- Nothing untranslated is written. A request that fails or answers with
+  another number of strings fails its keys; a value that comes back with
+  other interpolation variables than its source fails its own key. Failed
+  keys stay missing for the next run, the error is printed per locale, and
+  the command exits 2 after it writes what succeeded.
+- Only the files that receive a key are written, in the normalized form, as
+  `normalize --write` writes them. The configured router places each new key;
+  every existing key stays in its file, while the gem's pattern router moves
+  them.

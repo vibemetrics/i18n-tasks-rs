@@ -16,12 +16,20 @@ const JSON_FORMAT_PROMPT: &str = "Return the translations as a JSON object with 
 /// ruby-openai's default `request_timeout`.
 const TIMEOUT: Duration = Duration::from_secs(120);
 
-#[derive(Debug)]
 pub struct OpenAi {
     agent: ureq::Agent,
     url: String,
     key: String,
     model: String,
+}
+
+impl std::fmt::Debug for OpenAi {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAi")
+            .field("url", &self.url)
+            .field("model", &self.model)
+            .finish_non_exhaustive()
+    }
 }
 
 impl OpenAi {
@@ -41,8 +49,8 @@ impl OpenAi {
 
     /// # Errors
     ///
-    /// The request fails, or the answer is not a list of exactly as many
-    /// strings as were sent.
+    /// The request fails, or the answer holds no `translations` list of
+    /// strings.
     pub fn translate(
         &self,
         values: &[String],

@@ -71,9 +71,11 @@ struct Request {
     body: serde_json::Value,
 }
 
+const FAILING_VALUE: &str = "FAIL";
+
 /// A chat-completions endpoint that "translates" each string by prefixing the
-/// target language name from the system prompt. A string that holds `FAIL`
-/// gets an HTTP 500, so one batch can fail while the others succeed.
+/// target language name from the system prompt. A batch that holds
+/// `FAILING_VALUE` gets an HTTP 500.
 struct FakeOpenAi {
     url: String,
     requests: Arc<Mutex<Vec<Request>>>,
@@ -137,7 +139,7 @@ fn reply_to(body: &serde_json::Value) -> (&'static str, String) {
         .unwrap();
     let values: Vec<String> =
         serde_json::from_str(body["messages"][2]["content"].as_str().unwrap()).unwrap();
-    if values.iter().any(|v| v.contains("FAIL")) {
+    if values.iter().any(|v| v == FAILING_VALUE) {
         return (
             "500 Internal Server Error",
             r#"{"error":{"message":"the model is overloaded"}}"#.to_string(),
@@ -168,10 +170,7 @@ fn project(name: &str) -> Project {
 fn without_write_it_lists_the_keys_and_calls_nobody() {
     let p = project("plan");
     let server = FakeOpenAi::start();
-    let env = [
-        ("OPENAI_API_KEY", "sk-test"),
-        ("OPENAI_BASE_URL", &server.url),
-    ];
+    let env = [("OPENAI_BASE_URL", server.url.as_str())];
     let (code, out) = p.run(&["translate-missing"], &env);
     assert_eq!(code, 0, "{out}");
     let listed = |locale: &str, key: &str| {
@@ -190,6 +189,19 @@ fn without_write_it_lists_the_keys_and_calls_nobody() {
         p.read("config/locales/de.yml"),
         "de:\n  greeting: Hallo, %{name}!\n"
     );
+
+    let (code, out) = p.run(&["translate-missing", "-f", "json", "fi"], &env);
+    assert_eq!(code, 0, "{out}");
+    let json: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(json["check"], "translate-missing");
+    assert_eq!(json["written"], false);
+    let keys: Vec<&str> = json["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(keys, ["apples.one", "apples.other", "days", "greeting"]);
 }
 
 #[test]
@@ -249,18 +261,85 @@ fn the_model_defaults_to_gpt_4o_mini() {
     ];
     let (code, out) = p.run(&["translate-missing", "--write", "fi"], &env);
     assert_eq!(code, 0, "{out}");
-    assert_eq!(server.requests()[0].body["model"], "gpt-4o-mini");
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "only the locale asked for");
+    assert_eq!(requests[0].body["model"], "gpt-4o-mini");
+    assert_eq!(
+        p.read("config/locales/de.yml"),
+        "de:\n  greeting: Hallo, %{name}!\n"
+    );
 }
 
 #[test]
 fn write_without_a_key_fails_before_touching_anything() {
     let p = project("no-key");
-    for env in [&[][..], &[("OPENAI_API_KEY", "  ")][..]] {
-        let (code, out) = p.run(&["translate-missing", "--write"], env);
+    let server = FakeOpenAi::start();
+    for key in [None, Some("  ")] {
+        let mut env = vec![("OPENAI_BASE_URL", server.url.as_str())];
+        env.extend(key.map(|k| ("OPENAI_API_KEY", k)));
+        let (code, out) = p.run(&["translate-missing", "--write"], &env);
         assert_eq!(code, 2, "{out}");
         assert!(out.contains("OPENAI_API_KEY"), "{out}");
     }
+    assert!(server.requests().is_empty());
     assert_eq!(p.read("config/locales/fi.yml"), "fi:\n  limit: 5\n");
+}
+
+#[test]
+fn write_with_nothing_missing_needs_no_key() {
+    let p = project("nothing-missing");
+    p.write("config/locales/en.yml", "en:\n  limit: 5\n");
+    let (code, out) = p.run(&["translate-missing", "--write", "fi"], &[]);
+    assert_eq!(code, 0, "{out}");
+}
+
+#[test]
+fn files_that_receive_no_key_are_left_as_they_are() {
+    let p = project("untouched");
+    let untouched = "de:\n  only_here:   \"Nur hier\"\n";
+    p.write("config/locales/extra/more.de.yml", untouched);
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(&["translate-missing", "--write", "de"], &env);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        p.read("config/locales/de.yml")
+            .contains("German: One apple")
+    );
+    assert_eq!(p.read("config/locales/extra/more.de.yml"), untouched);
+}
+
+#[test]
+fn the_pattern_router_places_new_keys_and_moves_no_existing_one() {
+    let p = project("pattern-router");
+    p.write(
+        "config/i18n-tasks.yml",
+        "base_locale: en\nlocales: [en, de]\ndata:\n  router: pattern_router\n  read:\n    - config/locales/%{locale}.yml\n    - config/locales/*.%{locale}.yml\n  write:\n    - ['admin.*', 'config/locales/admin.%{locale}.yml']\n    - config/locales/%{locale}.yml\nsearch:\n  paths: [app/]\n",
+    )
+    .write(
+        "config/locales/en.yml",
+        "en:\n  admin:\n    x: Admin\n    y: Settings\n  hi: Hi\n",
+    )
+    .write("config/locales/de.yml", "de:\n  admin:\n    x: Verwaltung\n");
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(&["translate-missing", "--write", "de"], &env);
+    assert_eq!(code, 0, "{out}");
+    let de = p.read("config/locales/de.yml");
+    assert!(
+        de.contains("x: Verwaltung"),
+        "an existing key stays put: {de}"
+    );
+    assert!(de.contains("hi: 'German: Hi'"), "{de}");
+    let admin = p.read("config/locales/admin.de.yml");
+    assert!(admin.contains("'y': 'German: Settings'"), "{admin}");
+    assert!(!admin.contains("Verwaltung"), "nothing is copied: {admin}");
 }
 
 #[test]
@@ -268,7 +347,7 @@ fn a_failed_batch_is_reported_and_its_keys_stay_missing() {
     let p = project("failed-batch");
     p.write(
         "config/locales/en.yml",
-        "en:\n  greeting: Hello, %{name}!\n  broken: FAIL\n  ok: Fine\n",
+        &format!("en:\n  greeting: Hello, %{{name}}!\n  broken: {FAILING_VALUE}\n  ok: Fine\n"),
     )
     .write(
         "config/locales/de.yml",
@@ -289,7 +368,7 @@ fn a_failed_batch_is_reported_and_its_keys_stay_missing() {
     );
     let fi = p.read("config/locales/fi.yml");
     assert!(
-        !fi.contains("FAIL"),
+        !fi.contains(FAILING_VALUE),
         "the source text is never written: {fi}"
     );
     assert!(

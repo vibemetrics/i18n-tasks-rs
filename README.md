@@ -47,7 +47,7 @@ Library uses some "tricks" - like early files _discovery_ to skip work when it's
 -  `missing` / `unused` / `check-consistent-interpolations` / `check-reserved-interpolations` / `check-normalized` (+ `health` which wraps all commands), `eq-base`, `remove-unused`
 - `normalize` - yet it will yield slightly different yaml format than gem! also see `--pattern-router` / `--allow-delete` switches
 - `# i18n-tasks-use` comment hints (might cause some quirks, feel feel free to report any issues)
-- `translate-missing` through OpenAI - the key and the model come from `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-4o-mini`)
+- `translate-missing` through OpenAI - the key and the model come from `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-4o-mini`); `OPENAI_BASE_URL` points it at another OpenAI-compatible endpoint
 
 ## What was added
 - `clean-config` - cleans stale `ignore`, `ignore_missing`, `ignore_unused`, `ignore_eq_base`, and `interpolation-ignore` rules

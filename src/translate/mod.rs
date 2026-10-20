@@ -7,12 +7,11 @@
 pub mod language_names;
 pub mod openai;
 
-use crate::config::{Config, IgnoreType, Router};
+use crate::config::{Config, DataConfig, IgnoreType, Router};
 use crate::data::load::{Leaf, Store, Value};
 use crate::data::route::{self, ConservativeRouter, PatternRouter};
-use crate::plural::depluralize_key;
 use crate::report::interpolations::variables;
-use crate::report::missing::locale_key_missing;
+use crate::report::missing::diff_leaves;
 use crate::report::normalize::{self, NormalizeReport};
 use crate::report::{KeyRow, render_table};
 use crate::session::Session;
@@ -20,6 +19,7 @@ use regex::Regex;
 use std::collections::{BTreeSet, HashSet};
 use std::sync::{Arc, LazyLock};
 
+/// ref: openai_translator.rb:11
 pub const BATCH_SIZE: usize = 50;
 
 #[allow(
@@ -37,7 +37,7 @@ static PLACEHOLDER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"X__(\d+)").expect("static pattern compiles"));
 
 #[derive(Debug, Clone)]
-pub struct Pending {
+pub struct LocaleLeaves {
     pub locale: String,
     pub leaves: Vec<Leaf>,
 }
@@ -54,29 +54,22 @@ pub struct Translated {
     pub failures: Vec<Failure>,
 }
 
-/// ref: missing_keys.rb#missing_diff_tree
-pub fn pending(cfg: &Config, store: &Store, locales: &[String]) -> Vec<Pending> {
-    let base = &store.base_locale;
-    let Some(source) = store.tree(base) else {
+/// The base leaves each locale lacks, every plural form included. The other
+/// direction of `missing_diff_forest`, keys the base lacks, is not translated:
+/// accepted diff 34.
+pub fn pending(cfg: &Config, store: &Store, locales: &[String]) -> Vec<LocaleLeaves> {
+    let Some(source) = store.tree(&store.base_locale) else {
         return Vec::new();
     };
     locales
         .iter()
-        .filter(|l| *l != base)
         .map(|locale| {
             let ignore = cfg.ignore_patterns(IgnoreType::Missing, Some(locale));
-            let leaves = source
-                .sorted_keys()
-                .into_iter()
-                .filter(|leaf| {
-                    let key = depluralize_key(&leaf.key, Some(source), Some(source));
-                    locale_key_missing(store, &ignore, locale, &key)
-                })
-                .cloned()
-                .collect();
-            Pending {
+            LocaleLeaves {
                 locale: locale.clone(),
-                leaves,
+                leaves: diff_leaves(store, source, &ignore, locale)
+                    .map(|(_, leaf)| leaf.clone())
+                    .collect(),
             }
         })
         .filter(|p| !p.leaves.is_empty())
@@ -88,76 +81,85 @@ pub fn translate(
     leaves: &[Leaf],
     mut call: impl FnMut(&[String]) -> Result<Vec<String>, String>,
 ) -> Translated {
-    let mut values: Vec<Option<Value>> = vec![None; leaves.len()];
+    let mut done: Vec<(usize, Leaf)> = Vec::with_capacity(leaves.len());
     let mut failures = Vec::new();
-    let mut batch: Vec<(usize, Vec<String>)> = Vec::new();
-    let mut size = 0;
-    let mut flush = |batch: &mut Vec<(usize, Vec<String>)>, values: &mut Vec<Option<Value>>| {
-        if batch.is_empty() {
-            return;
-        }
-        match run_batch(leaves, batch, &mut call) {
-            Ok(translated) => {
-                for ((i, _), value) in batch.iter().zip(translated) {
-                    values[*i] = Some(value);
-                }
-            }
-            Err(error) => failures.push(Failure {
-                keys: batch.iter().map(|(i, _)| leaves[*i].key.clone()).collect(),
-                error,
-            }),
-        }
-        batch.clear();
-    };
+    let mut queued = Vec::new();
     for (i, leaf) in leaves.iter().enumerate() {
         let mut strings = Vec::new();
         dump(&leaf.value, &mut strings);
         if strings.is_empty() {
-            values[i] = Some(leaf.value.clone());
-            continue;
+            done.push((i, leaf.clone()));
+        } else {
+            queued.push((i, strings));
         }
-        if size + strings.len() > BATCH_SIZE {
-            flush(&mut batch, &mut values);
-            size = 0;
-        }
-        size += strings.len();
-        batch.push((i, strings));
     }
-    flush(&mut batch, &mut values);
+    for batch in batches(queued) {
+        let sent: Vec<String> = batch.iter().flat_map(|(_, s)| s.iter().cloned()).collect();
+        let keys = |batch: &[(usize, Vec<String>)]| {
+            batch.iter().map(|(i, _)| leaves[*i].key.clone()).collect()
+        };
+        let received = match call(&sent) {
+            Ok(r) if r.len() == sent.len() => r,
+            Ok(r) => {
+                failures.push(Failure {
+                    keys: keys(&batch),
+                    error: format!(
+                        "sent {} strings, received {} translations",
+                        sent.len(),
+                        r.len()
+                    ),
+                });
+                continue;
+            }
+            Err(error) => {
+                failures.push(Failure {
+                    keys: keys(&batch),
+                    error,
+                });
+                continue;
+            }
+        };
+        let mut received = received.into_iter();
+        for (i, _) in &batch {
+            let leaf = &leaves[*i];
+            match implode(&leaf.value, &mut received) {
+                Ok(value) => done.push((
+                    *i,
+                    Leaf {
+                        value,
+                        ..leaf.clone()
+                    },
+                )),
+                Err(error) => failures.push(Failure {
+                    keys: vec![leaf.key.clone()],
+                    error,
+                }),
+            }
+        }
+    }
+    done.sort_by_key(|(i, _)| *i);
     Translated {
-        leaves: leaves
-            .iter()
-            .zip(values)
-            .filter_map(|(leaf, value)| {
-                value.map(|value| Leaf {
-                    value,
-                    ..leaf.clone()
-                })
-            })
-            .collect(),
+        leaves: done.into_iter().map(|(_, leaf)| leaf).collect(),
         failures,
     }
 }
 
-fn run_batch(
-    leaves: &[Leaf],
-    batch: &[(usize, Vec<String>)],
-    call: &mut impl FnMut(&[String]) -> Result<Vec<String>, String>,
-) -> Result<Vec<Value>, String> {
-    let sent: Vec<String> = batch.iter().flat_map(|(_, s)| s.iter().cloned()).collect();
-    let received = call(&sent)?;
-    if received.len() != sent.len() {
-        return Err(format!(
-            "sent {} strings, received {} translations",
-            sent.len(),
-            received.len()
-        ));
+/// Consecutive keys up to `BATCH_SIZE` strings a batch. A key is never split,
+/// so one that holds more strings goes alone.
+fn batches(queued: Vec<(usize, Vec<String>)>) -> Vec<Vec<(usize, Vec<String>)>> {
+    let mut out: Vec<Vec<(usize, Vec<String>)>> = Vec::new();
+    let mut size = 0;
+    for (i, strings) in queued {
+        if out.is_empty() || size + strings.len() > BATCH_SIZE {
+            out.push(Vec::new());
+            size = 0;
+        }
+        size += strings.len();
+        if let Some(batch) = out.last_mut() {
+            batch.push((i, strings));
+        }
     }
-    let mut received = received.into_iter();
-    batch
-        .iter()
-        .map(|(i, _)| implode(&leaves[*i].value, &mut received))
-        .collect()
+    out
 }
 
 fn dump(value: &Value, out: &mut Vec<String>) {
@@ -242,21 +244,23 @@ fn restore(source: &str, translated: &str) -> Result<String, String> {
 }
 
 /// Adds the translations to `store` and plans the files that receive them.
-/// Nothing is written.
+/// The configured router places each new key; every existing key stays in
+/// the file it is in. Nothing is written.
 ///
 /// # Errors
 ///
-/// A key cannot be routed, or the write plan fails one of its guards.
+/// A key cannot be routed, a locale has no data, or the write plan fails one
+/// of its guards.
 pub fn merge(
     cfg: &Config,
     store: &mut Store,
-    translated: Vec<Pending>,
+    translated: Vec<LocaleLeaves>,
 ) -> Result<NormalizeReport, String> {
     let pattern = PatternRouter::new(cfg);
     let mut routed = Vec::with_capacity(translated.len());
     {
         let conservative = ConservativeRouter::new(&pattern, store);
-        for Pending { locale, leaves } in translated {
+        for LocaleLeaves { locale, leaves } in translated {
             if leaves.is_empty() {
                 continue;
             }
@@ -275,6 +279,13 @@ pub fn merge(
             routed.push((locale, out));
         }
     }
+    let in_place = Config {
+        data: DataConfig {
+            router: Router::Conservative,
+            ..cfg.data.clone()
+        },
+        ..cfg.clone()
+    };
     let mut locales = Vec::with_capacity(routed.len());
     let mut touched = HashSet::new();
     for (locale, leaves) in routed {
@@ -284,17 +295,18 @@ pub fn merge(
             .ok_or_else(|| format!("locale `{locale}` has no data"))?
             .extended(leaves);
         store.trees.insert(locale.clone(), tree);
-        for dest in route::route_filtered(cfg, store, &locale, false, &|k| keys.contains(k))? {
+        for dest in route::route_filtered(&in_place, store, &locale, false, &|k| keys.contains(k))?
+        {
             touched.insert(dest.path);
         }
         locales.push(locale);
     }
-    let mut report = normalize::plan(cfg, store, &locales, false)?;
+    let mut report = normalize::plan(&in_place, store, &locales, false)?;
     report.changes.retain(|c| touched.contains(&c.path));
     Ok(report)
 }
 
-pub fn rows(pending: &[Pending]) -> Vec<KeyRow> {
+pub fn rows(pending: &[LocaleLeaves]) -> Vec<KeyRow> {
     pending
         .iter()
         .flat_map(|p| {
@@ -413,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn batches_hold_at_most_fifty_strings_and_never_split_a_key() {
+    fn a_batch_fills_up_to_fifty_strings_without_splitting_a_key() {
         let mut leaves: Vec<Leaf> = (0..49).map(|i| leaf(&format!("k{i:02}"), s("v"))).collect();
         leaves.push(leaf("list", Value::Seq(vec![s("a"), s("b")])));
         leaves.push(leaf("last", s("v")));
@@ -450,16 +462,45 @@ mod tests {
     }
 
     #[test]
+    fn a_value_that_loses_a_variable_fails_alone() {
+        let leaves = [leaf("good", s("Hi %{name}")), leaf("bad", s("Bye %{name}"))];
+        let out = translate(&leaves, |batch| {
+            Ok(batch.iter().map(|v| v.replace("Bye X__0", "Moi")).collect())
+        });
+        assert_eq!(out.failures.len(), 1);
+        assert_eq!(out.failures[0].keys, ["bad"]);
+        assert_eq!(out.leaves.len(), 1);
+        assert_eq!(out.leaves[0].value, s("Hi %{name}"));
+    }
+
+    #[test]
+    fn a_key_with_more_strings_than_a_batch_goes_alone_and_whole() {
+        let long = Value::Seq((0..60).map(|i| s(&format!("v{i}"))).collect());
+        let leaves = [leaf("short", s("v")), leaf("long", long)];
+        let mut sizes = Vec::new();
+        let out = translate(&leaves, |batch| {
+            sizes.push(batch.len());
+            Ok(upcase(batch))
+        });
+        assert_eq!(sizes, [1, 60]);
+        assert_eq!(out.leaves.len(), 2);
+    }
+
+    #[test]
     fn pending_takes_every_plural_form_of_a_missing_key() {
         let root = std::env::temp_dir().join("i18n-tasks-rs-translate-pending");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("config/locales")).unwrap();
         std::fs::write(
             root.join("config/locales/en.yml"),
-            "en:\n  apples:\n    one: One\n    other: Many\n  hi: Hi\n  skip:\n    me: x\n",
+            "en:\n  apples:\n    one: One\n    other: Many\n  pears:\n    zero: None\n    one: One\n    other: Many\n  hi: Hi\n  skip:\n    me: x\n",
         )
         .unwrap();
-        std::fs::write(root.join("config/locales/de.yml"), "de:\n  hi: Hallo\n").unwrap();
+        std::fs::write(
+            root.join("config/locales/de.yml"),
+            "de:\n  hi: Hallo\n  pears:\n    other: Viele\n",
+        )
+        .unwrap();
         let cfg = Config::parse(
             "base_locale: en\nlocales: [en, de]\ndata:\n  read:\n    - config/locales/%{locale}.yml\nignore_missing:\n  - skip.*\n",
             &root.join("config/i18n-tasks.yml"),
