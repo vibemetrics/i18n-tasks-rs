@@ -274,13 +274,15 @@ pub fn plan_files(
     })
 }
 
-/// Every locale's read is consulted, not only `locale`'s: a file this locale
-/// never read, such as the base locale's, can still be its destination.
+/// Every locale's read is consulted, external data included, not only
+/// `locale`'s: a file this locale never read, such as the base locale's, can
+/// still be its destination.
 fn check_foreign_locales(store: &Store, path: &Path, locale: &str) -> Result<(), String> {
     let mut foreign: Vec<&str> = store
-        .locales
-        .iter()
-        .filter_map(|l| store.tree(l)?.file_locales.get(path))
+        .trees
+        .values()
+        .chain(store.external.values())
+        .filter_map(|tree| tree.file_locales.get(path))
         .flatten()
         .map(String::as_str)
         .filter(|l| *l != locale)

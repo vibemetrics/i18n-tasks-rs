@@ -87,6 +87,15 @@ pub fn translate(
     let mut failures = Vec::new();
     let mut queued = Vec::new();
     for (i, leaf) in leaves.iter().enumerate() {
+        if has_ambiguous_placeholder(&leaf.value) {
+            failures.push(Failure {
+                keys: vec![leaf.key.clone()],
+                error: "the source holds a literal `X__n` beside an interpolation, \
+                        which the placeholders cannot tell apart"
+                    .to_string(),
+            });
+            continue;
+        }
         let mut strings = Vec::new();
         dump(&leaf.value, &mut strings);
         if strings.is_empty() {
@@ -210,6 +219,15 @@ fn implode(value: &Value, translated: &mut impl Iterator<Item = String>) -> Resu
         ),
         other => other.clone(),
     })
+}
+
+fn has_ambiguous_placeholder(value: &Value) -> bool {
+    match value {
+        Value::Str(s) => INTERPOLATION.is_match(s) && PLACEHOLDER.is_match(s),
+        Value::Seq(items) => items.iter().any(has_ambiguous_placeholder),
+        Value::Map(entries) => entries.iter().any(|(_, v)| has_ambiguous_placeholder(v)),
+        _ => false,
+    }
 }
 
 fn protect(value: &str) -> String {
@@ -496,6 +514,28 @@ mod tests {
         assert_eq!(out.failures[0].keys, ["bad"]);
         assert_eq!(out.leaves.len(), 1);
         assert_eq!(out.leaves[0].value, s("Hi %{name}"));
+    }
+
+    #[test]
+    fn a_source_with_a_literal_placeholder_and_a_variable_is_refused() {
+        let leaves = [
+            leaf("device", s("Device X__0 belongs to %{name}")),
+            leaf("code", s("Code X__0")),
+        ];
+        let mut sent = Vec::new();
+        let out = translate(
+            &leaves,
+            |_| false,
+            |batch| {
+                sent.extend(batch.iter().cloned());
+                Ok(batch.to_vec())
+            },
+        );
+        assert_eq!(sent, ["Code X__0"]);
+        assert_eq!(out.failures.len(), 1);
+        assert_eq!(out.failures[0].keys, ["device"]);
+        assert_eq!(out.leaves.len(), 1);
+        assert_eq!(out.leaves[0].value, s("Code X__0"));
     }
 
     #[test]
