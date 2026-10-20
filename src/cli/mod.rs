@@ -61,7 +61,7 @@ enum Command {
     CheckNormalized(CheckArgs),
     /// Rewrite the locale files in the normalized form.
     ///
-    /// Blocker B8: writing is opt-in. Without `--write` nothing is touched.
+    /// Writes, as the gem does; `--dry-run` prints the diff instead.
     Normalize(NormalizeArgs),
     /// Translate the keys the base locale has and a locale lacks, through OpenAI.
     ///
