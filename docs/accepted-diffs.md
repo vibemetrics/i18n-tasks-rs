@@ -794,9 +794,10 @@ interpolation without a word.
 - Only base-to-locale keys are translated. With the base among the locales,
   the gem's `missing_diff_forest` (`missing_keys.rb:44-48`) also sends keys
   that another locale has and the base lacks.
-- Writing follows B8: without `--write` the command lists the keys and calls
-  nobody. `--write` with something to translate and no key fails before any
-  request.
+- It writes without `--write`, as the gem does: the exception to B8. With
+  something to translate and no key it fails before any request. It prints
+  the translated keys as a table or the `-f json` envelope, not the gem's
+  YAML tree.
 - The gem cuts the flat list of strings into slices of 50
   (`openai_translator.rb:97`), so an array can straddle two requests. Here a
   request holds whole keys, up to 50 strings, and a key that holds more goes
@@ -804,8 +805,9 @@ interpolation without a word.
   backend gives both the same options, so here they share a request.
 - Nothing untranslated is written. A request that fails or answers with
   another number of strings fails its keys; a value that comes back with
-  other interpolation variables than its source fails its own key. Failed
-  keys stay missing for the next run, the error is printed per locale, and
+  other interpolation variables than its source fails its own key, and a
+  plural form that fails fails its sibling forms too. Failed keys stay
+  missing for the next run, the error is printed per locale, and
   the command exits 2 after it writes what succeeded.
 - Only the files that receive a key are written, in the normalized form, as
   `normalize --write` writes them. The configured router places each new key;

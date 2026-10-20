@@ -155,6 +155,10 @@ to apply, `--dry-run` for the diff, and `--allow-delete` on top of `--write`
 before any file is removed. The list of files that would be deleted is always
 printed, flag or not.
 
+The one exception is `translate-missing`, which writes as the gem's does: the
+fork replaces the gem with its interface for what Bondata uses. It only adds
+keys, so it never empties a file.
+
 ### B9. `ruby-prism` crate lifetimes
 
 The generated node API ties node lifetimes to the `ParseResult`, so nodes cannot

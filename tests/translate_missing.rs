@@ -167,34 +167,30 @@ fn project(name: &str) -> Project {
 }
 
 #[test]
-fn without_write_it_lists_the_keys_and_calls_nobody() {
-    let p = project("plan");
+fn it_reports_the_keys_it_translated() {
+    let p = project("report");
     let server = FakeOpenAi::start();
-    let env = [("OPENAI_BASE_URL", server.url.as_str())];
-    let (code, out) = p.run(&["translate-missing"], &env);
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
     assert_eq!(code, 0, "{out}");
-    let listed = |locale: &str, key: &str| {
+    assert!(
         out.lines()
-            .any(|l| l.starts_with(&format!("{locale} ")) && l.contains(key))
-    };
-    assert!(listed("de", "apples.one"), "{out}");
-    assert!(listed("fi", "greeting"), "{out}");
+            .any(|l| l.starts_with("de ") && l.contains("apples.one")),
+        "{out}"
+    );
     assert!(
         !out.contains("secret.token"),
         "ignore_missing applies: {out}"
     );
-    assert!(out.contains("Pass `--write`"), "{out}");
-    assert!(server.requests().is_empty());
-    assert_eq!(
-        p.read("config/locales/de.yml"),
-        "de:\n  greeting: Hallo, %{name}!\n"
-    );
 
     let (code, out) = p.run(&["translate-missing", "-f", "json", "fi"], &env);
     assert_eq!(code, 0, "{out}");
-    let json: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let stdout = &out[out.find('{').unwrap()..=out.rfind('}').unwrap()];
+    let json: serde_json::Value = serde_json::from_str(stdout).unwrap();
     assert_eq!(json["check"], "translate-missing");
-    assert_eq!(json["written"], false);
     let keys: Vec<&str> = json["keys"]
         .as_array()
         .unwrap()
@@ -205,7 +201,7 @@ fn without_write_it_lists_the_keys_and_calls_nobody() {
 }
 
 #[test]
-fn write_translates_the_missing_keys_and_the_result_passes_the_checks() {
+fn it_writes_the_missing_keys_and_the_result_passes_the_checks() {
     let p = project("write");
     let server = FakeOpenAi::start();
     let env = [
@@ -213,7 +209,7 @@ fn write_translates_the_missing_keys_and_the_result_passes_the_checks() {
         ("OPENAI_MODEL", "gpt-4o"),
         ("OPENAI_BASE_URL", server.url.as_str()),
     ];
-    let (code, out) = p.run(&["translate-missing", "--write", "de", "fi"], &env);
+    let (code, out) = p.run(&["translate-missing", "de", "fi"], &env);
     assert_eq!(code, 0, "{out}");
 
     let de = p.read("config/locales/de.yml");
@@ -245,7 +241,7 @@ fn write_translates_the_missing_keys_and_the_result_passes_the_checks() {
         let (code, out) = p.run(&[check, "de", "fi"], &[]);
         assert_eq!(code, 0, "{check}: {out}");
     }
-    let (code, out) = p.run(&["translate-missing", "--write"], &env);
+    let (code, out) = p.run(&["translate-missing"], &env);
     assert_eq!(code, 0, "{out}");
     assert_eq!(server.requests().len(), 2, "nothing is left to translate");
 }
@@ -259,7 +255,7 @@ fn the_model_defaults_to_gpt_4o_mini() {
         ("OPENAI_MODEL", ""),
         ("OPENAI_BASE_URL", server.url.as_str()),
     ];
-    let (code, out) = p.run(&["translate-missing", "--write", "fi"], &env);
+    let (code, out) = p.run(&["translate-missing", "fi"], &env);
     assert_eq!(code, 0, "{out}");
     let requests = server.requests();
     assert_eq!(requests.len(), 1, "only the locale asked for");
@@ -271,13 +267,13 @@ fn the_model_defaults_to_gpt_4o_mini() {
 }
 
 #[test]
-fn write_without_a_key_fails_before_touching_anything() {
+fn without_a_key_it_fails_before_touching_anything() {
     let p = project("no-key");
     let server = FakeOpenAi::start();
     for key in [None, Some("  ")] {
         let mut env = vec![("OPENAI_BASE_URL", server.url.as_str())];
         env.extend(key.map(|k| ("OPENAI_API_KEY", k)));
-        let (code, out) = p.run(&["translate-missing", "--write"], &env);
+        let (code, out) = p.run(&["translate-missing"], &env);
         assert_eq!(code, 2, "{out}");
         assert!(out.contains("OPENAI_API_KEY"), "{out}");
     }
@@ -286,10 +282,10 @@ fn write_without_a_key_fails_before_touching_anything() {
 }
 
 #[test]
-fn write_with_nothing_missing_needs_no_key() {
+fn with_nothing_missing_it_needs_no_key() {
     let p = project("nothing-missing");
     p.write("config/locales/en.yml", "en:\n  limit: 5\n");
-    let (code, out) = p.run(&["translate-missing", "--write", "fi"], &[]);
+    let (code, out) = p.run(&["translate-missing", "fi"], &[]);
     assert_eq!(code, 0, "{out}");
 }
 
@@ -303,13 +299,38 @@ fn files_that_receive_no_key_are_left_as_they_are() {
         ("OPENAI_API_KEY", "sk-test"),
         ("OPENAI_BASE_URL", server.url.as_str()),
     ];
-    let (code, out) = p.run(&["translate-missing", "--write", "de"], &env);
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
     assert_eq!(code, 0, "{out}");
     assert!(
         p.read("config/locales/de.yml")
             .contains("German: One apple")
     );
     assert_eq!(p.read("config/locales/extra/more.de.yml"), untouched);
+}
+
+#[test]
+fn an_untouched_file_holding_two_locales_does_not_block_the_write() {
+    let p = project("shared-file");
+    p.write(
+        "config/i18n-tasks.yml",
+        "base_locale: en\nlocales: [en, de, fi]\ndata:\n  read:\n    - config/locales/%{locale}.yml\n    - config/locales/shared.yml\nsearch:\n  paths: [app/]\n",
+    )
+    .write("config/locales/shared.yml", "de:\n  s: S\nfi:\n  s: S\n");
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
+    assert_eq!(code, 0, "{out}");
+    assert!(
+        p.read("config/locales/de.yml")
+            .contains("German: One apple")
+    );
+    assert_eq!(
+        p.read("config/locales/shared.yml"),
+        "de:\n  s: S\nfi:\n  s: S\n"
+    );
 }
 
 #[test]
@@ -329,7 +350,7 @@ fn the_pattern_router_places_new_keys_and_moves_no_existing_one() {
         ("OPENAI_API_KEY", "sk-test"),
         ("OPENAI_BASE_URL", server.url.as_str()),
     ];
-    let (code, out) = p.run(&["translate-missing", "--write", "de"], &env);
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
     assert_eq!(code, 0, "{out}");
     let de = p.read("config/locales/de.yml");
     assert!(
@@ -358,7 +379,7 @@ fn a_failed_batch_is_reported_and_its_keys_stay_missing() {
         ("OPENAI_API_KEY", "sk-test"),
         ("OPENAI_BASE_URL", server.url.as_str()),
     ];
-    let (code, out) = p.run(&["translate-missing", "--write", "de", "fi"], &env);
+    let (code, out) = p.run(&["translate-missing", "de", "fi"], &env);
     assert_eq!(code, 2, "{out}");
     assert!(out.contains("the model is overloaded"), "{out}");
     let de = p.read("config/locales/de.yml");

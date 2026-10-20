@@ -80,7 +80,7 @@ i18n-tasks-rs check-reserved-interpolations   [-l LOCALES] [locale ...]
 i18n-tasks-rs check-normalized [-l LOCALES] [locale ...]
 i18n-tasks-rs normalize [-l LOCALES] [locale ...] [-p/--pattern-router]
                                      [--write | --dry-run] [--allow-delete]
-i18n-tasks-rs translate-missing [-l LOCALES] [locale ...] [--write]
+i18n-tasks-rs translate-missing [-l LOCALES] [locale ...]
 i18n-tasks-rs clean-config [-l LOCALES] [locale ...] [--write]
 i18n-tasks-rs health    [-l LOCALES] [locale ...] [-q/--quiet]
 i18n-tasks-rs find      [-l LOCALES] [locale ...]
@@ -90,8 +90,9 @@ i18n-tasks-rs migrate-config [-i/--from PATH] [-o/--to PATH]
 ```
 
 Project-reading commands also accept `-c/--config PATH`, `-f/--format
-text|json`, `--root PATH`, and `-j/--jobs N`. `remove-unused`, `normalize`,
-`translate-missing` and `clean-config` do not write unless `--write` is present. Use each command's
+text|json`, `--root PATH`, and `-j/--jobs N`. `remove-unused`, `normalize` and
+`clean-config` do not write unless `--write` is present; `translate-missing`
+writes, as the gem's does. Use each command's
 `--help` output as the complete option reference.
 
 ## Config syntax

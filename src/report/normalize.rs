@@ -163,6 +163,24 @@ pub fn plan_filtered(
     force_pattern: bool,
     keep: &impl Fn(&str, &str) -> bool,
 ) -> Result<NormalizeReport, String> {
+    plan_files(cfg, store, locales, force_pattern, keep, &|_| true)
+}
+
+/// Works out only the files `only` accepts. A file outside them is neither
+/// planned nor checked.
+///
+/// # Errors
+///
+/// A selected key cannot be routed, a locale has no data, or a write-safety
+/// guard fails on an accepted file. Nothing is written.
+pub fn plan_files(
+    cfg: &Config,
+    store: &Store,
+    locales: &[String],
+    force_pattern: bool,
+    keep: &impl Fn(&str, &str) -> bool,
+    only: &impl Fn(&Path) -> bool,
+) -> Result<NormalizeReport, String> {
     let mut changes = Vec::new();
     let mut files_routed = 0usize;
     let mut claimed: HashMap<PathBuf, String> = HashMap::new();
@@ -175,7 +193,7 @@ pub fn plan_filtered(
             .ok_or_else(|| format!("locale `{locale}` has no data"))?;
         let mut written: BTreeSet<PathBuf> = BTreeSet::new();
 
-        for dest in &destinations {
+        for dest in destinations.iter().filter(|d| only(&d.path)) {
             files_routed += 1;
             if let Some(other) = claimed.get(&dest.path) {
                 return Err(format!(
@@ -232,7 +250,7 @@ pub fn plan_filtered(
         }
 
         for path in route::origin_paths(store, locale) {
-            if written.contains(&path) {
+            if written.contains(&path) || !only(&path) {
                 continue;
             }
             check_foreign_locales(tree, &path, locale)?;

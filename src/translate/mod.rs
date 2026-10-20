@@ -10,6 +10,7 @@ pub mod openai;
 use crate::config::{Config, DataConfig, IgnoreType, Router};
 use crate::data::load::{Leaf, Store, Value};
 use crate::data::route::{self, ConservativeRouter, PatternRouter};
+use crate::keys::parent_key;
 use crate::report::interpolations::variables;
 use crate::report::missing::diff_leaves;
 use crate::report::normalize::{self, NormalizeReport};
@@ -79,6 +80,7 @@ pub fn pending(cfg: &Config, store: &Store, locales: &[String]) -> Vec<LocaleLea
 /// ref: base_translator.rb#translate_pairs
 pub fn translate(
     leaves: &[Leaf],
+    is_plural: impl Fn(&str) -> bool,
     mut call: impl FnMut(&[String]) -> Result<Vec<String>, String>,
 ) -> Translated {
     let mut done: Vec<(usize, Leaf)> = Vec::with_capacity(leaves.len());
@@ -120,9 +122,10 @@ pub fn translate(
             }
         };
         let mut received = received.into_iter();
-        for (i, _) in &batch {
+        for (i, strings) in &batch {
             let leaf = &leaves[*i];
-            match implode(&leaf.value, &mut received) {
+            let own: Vec<String> = received.by_ref().take(strings.len()).collect();
+            match implode(&leaf.value, &mut own.into_iter()) {
                 Ok(value) => done.push((
                     *i,
                     Leaf {
@@ -136,6 +139,20 @@ pub fn translate(
                 }),
             }
         }
+    }
+    let broken: HashSet<&str> = failures
+        .iter()
+        .flat_map(|f| &f.keys)
+        .filter_map(|key| parent_key(key).filter(|p| is_plural(p)))
+        .collect();
+    let (siblings, mut done): (Vec<_>, Vec<_>) = done
+        .into_iter()
+        .partition(|(_, leaf)| parent_key(&leaf.key).is_some_and(|p| broken.contains(p)));
+    if !siblings.is_empty() {
+        failures.push(Failure {
+            keys: siblings.into_iter().map(|(_, leaf)| leaf.key).collect(),
+            error: "another form of the same plural key failed".to_string(),
+        });
     }
     done.sort_by_key(|(i, _)| *i);
     Translated {
@@ -301,9 +318,9 @@ pub fn merge(
         }
         locales.push(locale);
     }
-    let mut report = normalize::plan(&in_place, store, &locales, false)?;
-    report.changes.retain(|c| touched.contains(&c.path));
-    Ok(report)
+    normalize::plan_files(&in_place, store, &locales, false, &|_, _| true, &|path| {
+        touched.contains(path)
+    })
 }
 
 pub fn rows(pending: &[LocaleLeaves]) -> Vec<KeyRow> {
@@ -320,12 +337,7 @@ pub fn rows(pending: &[LocaleLeaves]) -> Vec<KeyRow> {
         .collect()
 }
 
-pub fn to_text(rows: &[KeyRow], written: bool) -> String {
-    let (title, column) = if written {
-        ("Translated keys", "Translation")
-    } else {
-        ("Missing keys to translate", "Base value")
-    };
+pub fn to_text(rows: &[KeyRow]) -> String {
     let cells: Vec<Vec<String>> = rows
         .iter()
         .map(|r| {
@@ -336,16 +348,15 @@ pub fn to_text(rows: &[KeyRow], written: bool) -> String {
             ]
         })
         .collect();
-    render_table(title, &["Locale", "Key", column], &cells)
+    render_table("Translated keys", &["Locale", "Key", "Translation"], &cells)
 }
 
 /// # Errors
 ///
 /// The rows do not serialize.
-pub fn to_json(session: &Session, rows: &[KeyRow], written: bool) -> Result<String, String> {
+pub fn to_json(session: &Session, rows: &[KeyRow]) -> Result<String, String> {
     serde_json::to_string_pretty(&serde_json::json!({
         "check": "translate-missing",
-        "written": written,
         "config_digest": session.cfg.digest,
         "locales": session.locales,
         "keys": rows,
@@ -405,10 +416,14 @@ mod tests {
             ),
         ];
         let mut calls = 0;
-        let out = translate(&leaves, |batch| {
-            calls += 1;
-            Ok(upcase(batch))
-        });
+        let out = translate(
+            &leaves,
+            |_| false,
+            |batch| {
+                calls += 1;
+                Ok(upcase(batch))
+            },
+        );
         assert_eq!(calls, 1);
         assert!(out.failures.is_empty());
         let values: Vec<&Value> = out.leaves.iter().map(|l| &l.value).collect();
@@ -430,10 +445,14 @@ mod tests {
         leaves.push(leaf("list", Value::Seq(vec![s("a"), s("b")])));
         leaves.push(leaf("last", s("v")));
         let mut sizes = Vec::new();
-        let out = translate(&leaves, |batch| {
-            sizes.push(batch.len());
-            Ok(upcase(batch))
-        });
+        let out = translate(
+            &leaves,
+            |_| false,
+            |batch| {
+                sizes.push(batch.len());
+                Ok(upcase(batch))
+            },
+        );
         assert_eq!(sizes, [49, 3]);
         assert_eq!(out.leaves.len(), 51);
     }
@@ -442,14 +461,18 @@ mod tests {
     fn a_failed_batch_drops_only_its_own_keys() {
         let leaves: Vec<Leaf> = (0..60).map(|i| leaf(&format!("k{i:02}"), s("v"))).collect();
         let mut call = 0;
-        let out = translate(&leaves, |batch| {
-            call += 1;
-            if call == 1 {
-                Ok(vec!["short".into()])
-            } else {
-                Ok(upcase(batch))
-            }
-        });
+        let out = translate(
+            &leaves,
+            |_| false,
+            |batch| {
+                call += 1;
+                if call == 1 {
+                    Ok(vec!["short".into()])
+                } else {
+                    Ok(upcase(batch))
+                }
+            },
+        );
         assert_eq!(out.failures.len(), 1);
         assert_eq!(out.failures[0].keys.len(), 50);
         assert!(
@@ -464,9 +487,11 @@ mod tests {
     #[test]
     fn a_value_that_loses_a_variable_fails_alone() {
         let leaves = [leaf("good", s("Hi %{name}")), leaf("bad", s("Bye %{name}"))];
-        let out = translate(&leaves, |batch| {
-            Ok(batch.iter().map(|v| v.replace("Bye X__0", "Moi")).collect())
-        });
+        let out = translate(
+            &leaves,
+            |_| false,
+            |batch| Ok(batch.iter().map(|v| v.replace("Bye X__0", "Moi")).collect()),
+        );
         assert_eq!(out.failures.len(), 1);
         assert_eq!(out.failures[0].keys, ["bad"]);
         assert_eq!(out.leaves.len(), 1);
@@ -474,14 +499,63 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_collection_does_not_shift_the_next_keys_translation() {
+        let leaves = [
+            leaf("list", Value::Seq(vec![s("Hi %{name}"), s("Bye")])),
+            leaf("after", s("Later")),
+        ];
+        let out = translate(
+            &leaves,
+            |_| false,
+            |batch| {
+                Ok(batch
+                    .iter()
+                    .map(|v| v.replace("Hi X__0", "Moi").to_uppercase())
+                    .collect())
+            },
+        );
+        assert_eq!(out.failures.len(), 1);
+        assert_eq!(out.failures[0].keys, ["list"]);
+        assert_eq!(out.leaves.len(), 1);
+        assert_eq!(out.leaves[0].key, "after");
+        assert_eq!(out.leaves[0].value, s("LATER"));
+    }
+
+    #[test]
+    fn a_plural_form_that_fails_takes_its_sibling_forms_with_it() {
+        let leaves = [
+            leaf("apples.one", s("One apple")),
+            leaf("apples.other", s("%{count} apples")),
+            leaf("pear", s("Pear")),
+        ];
+        let out = translate(
+            &leaves,
+            |key| key == "apples",
+            |batch| Ok(batch.iter().map(|v| v.replace("X__0", "many")).collect()),
+        );
+        let failed: Vec<&str> = out
+            .failures
+            .iter()
+            .flat_map(|f| f.keys.iter().map(String::as_str))
+            .collect();
+        assert_eq!(failed, ["apples.other", "apples.one"]);
+        let written: Vec<&str> = out.leaves.iter().map(|l| l.key.as_str()).collect();
+        assert_eq!(written, ["pear"]);
+    }
+
+    #[test]
     fn a_key_with_more_strings_than_a_batch_goes_alone_and_whole() {
         let long = Value::Seq((0..60).map(|i| s(&format!("v{i}"))).collect());
         let leaves = [leaf("short", s("v")), leaf("long", long)];
         let mut sizes = Vec::new();
-        let out = translate(&leaves, |batch| {
-            sizes.push(batch.len());
-            Ok(upcase(batch))
-        });
+        let out = translate(
+            &leaves,
+            |_| false,
+            |batch| {
+                sizes.push(batch.len());
+                Ok(upcase(batch))
+            },
+        );
         assert_eq!(sizes, [1, 60]);
         assert_eq!(out.leaves.len(), 2);
     }
