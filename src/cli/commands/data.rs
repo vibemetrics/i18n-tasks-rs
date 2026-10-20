@@ -1,6 +1,5 @@
 //! ref: lib/i18n/tasks/command/commands/data.rb:77-95. `data-merge` writes,
-//! as the gem's does; an exception to blocker B8. A deletion still needs
-//! `--allow-delete`.
+//! as the gem's does; an exception to blocker B8.
 
 use crate::cli::args::{Common, Format};
 use crate::cli::commands::report_deletions;

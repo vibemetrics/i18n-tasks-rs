@@ -292,15 +292,13 @@ pub fn origin_paths(store: &Store, locale: &str) -> Vec<PathBuf> {
     let Some(tree) = store.tree(locale) else {
         return Vec::new();
     };
-    let mut out: Vec<PathBuf> = tree
-        .leaves
+    tree.leaves
         .iter()
         .map(|l| l.path.to_path_buf())
+        .chain(tree.vacated.iter().cloned())
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
-        .collect();
-    out.sort();
-    out
+        .collect()
 }
 
 #[cfg(test)]

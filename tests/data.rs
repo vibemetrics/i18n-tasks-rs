@@ -151,6 +151,30 @@ fn data_merge_normalizes_the_merged_locales_files_even_with_nothing_new() {
 }
 
 #[test]
+fn data_merge_deletes_a_file_it_empties_only_when_allowed() {
+    let p = Project::new("vacate");
+    let input = r#"{"ru":{"devise":{"items":{"one":{"x":"Икс"}}}}}"#;
+    let (code, out, err) = p.merge(&["-f", "json"], input);
+    assert_eq!((code, out.as_str()), (2, ""), "{err}");
+    assert!(err.contains("devise.ru.yml"), "{err}");
+    assert_eq!(p.read("devise.ru.yml"), fixture_locale("devise.ru.yml"));
+
+    let (code, _, err) = p.merge(&["-f", "json", "--allow-delete"], input);
+    assert_eq!(code, 0, "{err}");
+    assert!(!p.root.join("config/locales/devise.ru.yml").exists());
+    assert!(p.read("ru.yml").contains("      one:\n        x: Икс\n"));
+}
+
+#[test]
+fn data_merge_refuses_a_key_holding_a_dot() {
+    let p = Project::new("dotted");
+    let (code, _, err) = p.merge(&["-f", "json"], r#"{"ru":{"title.sub":"x"}}"#);
+    assert_eq!(code, 2);
+    assert!(err.contains("title.sub"), "{err}");
+    assert_eq!(p.read("ru.yml"), fixture_locale("ru.yml"));
+}
+
+#[test]
 fn data_merge_reads_json_only() {
     let p = Project::new("text");
     let (code, _, err) = p.merge(&[], r#"{"ru":{"title":"x"}}"#);

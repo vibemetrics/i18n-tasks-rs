@@ -2,8 +2,7 @@
 //!
 //! ref: lib/i18n/tasks/missing_keys.rb
 
-use super::data::put;
-use super::{KeyRow, Outcome, Reason, render_table};
+use super::{KeyRow, Outcome, Reason, put, render_table};
 use crate::config::{Config, IgnoreType};
 use crate::data::load::{Leaf, LocaleTree, Store};
 use crate::pattern::PatternSet;

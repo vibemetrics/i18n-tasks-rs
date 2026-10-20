@@ -286,10 +286,10 @@ terminal-table and Rainbow are replaced with a plain aligned table.
 
 **Here.** `missing -f json` prints the same, byte for byte for every type
 (`tests/missing_json.rs`, against goldens recorded from gem 1.1.2), and so do
-`data` and `data-merge` (entry 35). A plain
-scalar becomes the number Psych reads (`010` is 8, `0x1f` is 31, `1:30` is
-5400, `1e5` stays a string), and a Symbol inside a sequence is its name. The
-remaining differences are in values or orders no consumer of ours reads:
+`data` and `data-merge` (entry 35). A plain scalar becomes the number Psych
+reads (`010` is 8, `0x1f` is 31, `1:30` is 5400, `1e5` stays a string), and a
+Symbol inside a sequence is its name. The remaining differences are in values
+or orders no consumer of ours reads:
 
 - `plural` leaves come out with their forms sorted; the gem keeps the file's
   order inside that one value.
@@ -300,9 +300,10 @@ remaining differences are in values or orders no consumer of ours reads:
 - A date is printed as written; the gem refuses the file
   (`Psych::DisallowedClass`).
 
-`-f report` is this port's envelope on every command. The other commands still
-print the envelope under `-f json` as well, because nobody reads their gem
-JSON. Every envelope carries the config digest, so a differential run can prove
+`-f report` is this port's envelope on every command but `data` and
+`data-merge`, which have no report to wrap (entry 35). The commands other than
+these three still print the envelope under `-f json` as well, because nobody
+reads their gem JSON. Every envelope carries the config digest, so a differential run can prove
 both tools read the same settings.
 
 The JSON is an interface, not a rendering of the table, so a reported row gives
@@ -856,9 +857,7 @@ locales whole. `-f` picks the format of both, from `terminal-table`, `yaml`,
 
 **Here.** `-f json` prints the gem's JSON byte for byte (`tests/data.rs`,
 against goldens recorded from gem 1.1.2), and `data-merge` writes the same
-data to the same files as the gem. On vibemetrics-api's 38 locales `data` and
-a plural-filling merge print what the gem prints, and the written files differ
-only in the emitter's quoting (B1). The rest:
+data to the same files as the gem, in the emitter's quoting (B1). The rest:
 
 - `data` prints the locale files' YAML as text and the gem's JSON under both
   `-f json` and `-f report`: it has no report to wrap.
@@ -869,6 +868,8 @@ only in the emitter's quoting (B1). The rest:
   before a file is written.
 - An empty mapping adds nothing. The gem prints it as `{}` and does not write
   it.
+- A key that holds a dot is an error. The gem keeps it as one segment; here
+  it cannot be told from nested keys, so merging it would overwrite them.
 - It writes without `--write`, as the gem does: an exception to B8. A file
   that ends up empty is deleted only under `--allow-delete`, as for
   `normalize`.

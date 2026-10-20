@@ -9,6 +9,7 @@ use crate::data::load::{Leaf, Store, Value};
 use crate::data::route;
 use crate::keys::parent_key;
 use crate::report::normalize::{self, NormalizeReport};
+use crate::report::put;
 use serde_json::{Map, Value as Json};
 use std::collections::HashSet;
 use std::path::Path;
@@ -74,7 +75,7 @@ pub fn merge(
             ));
         }
         let mut leaves = Vec::new();
-        flatten(root, &mut Vec::new(), &mut leaves);
+        flatten(root, &mut Vec::new(), &mut leaves)?;
         leaves.retain(|leaf| !tree.is_interior(&leaf.key));
         let ancestors: HashSet<String> = leaves
             .iter()
@@ -90,28 +91,22 @@ pub fn merge(
     Ok((report, locales))
 }
 
-fn flatten(node: &Json, prefix: &mut Vec<String>, out: &mut Vec<Leaf>) {
+fn flatten(node: &Json, prefix: &mut Vec<String>, out: &mut Vec<Leaf>) -> Result<(), String> {
     if let Json::Object(entries) = node {
         for (key, value) in entries {
+            if key.contains('.') {
+                return Err(format!(
+                    "`{key}` holds a dot. data-merge cannot tell it from nested keys"
+                ));
+            }
             prefix.push(key.clone());
-            flatten(value, prefix, out);
+            flatten(value, prefix, out)?;
             prefix.pop();
         }
-        return;
+        return Ok(());
     }
-    out.push(Leaf {
-        key: prefix.join("."),
-        value: to_value(node),
-        depth: u16::try_from(prefix.len()).unwrap_or(u16::MAX),
-        path: Arc::from(Path::new("")),
-        odd_segments: prefix.iter().any(|s| s.contains('.')).then(|| {
-            prefix
-                .iter()
-                .map(|s| s.as_str().into())
-                .collect::<Vec<Box<str>>>()
-                .into_boxed_slice()
-        }),
-    });
+    out.push(Leaf::new(prefix, to_value(node), Arc::from(Path::new(""))));
+    Ok(())
 }
 
 fn to_value(json: &Json) -> Value {
@@ -130,30 +125,6 @@ fn to_value(json: &Json) -> Value {
     }
 }
 
-/// Sets `value` at `locale` and `segments`. A mapping wins over a leaf, as in
-/// the gem's `merge!`.
-pub(crate) fn put(root: &mut Map<String, Json>, locale: &str, segments: &[&str], value: Json) {
-    let Some((last, parents)) = segments.split_last() else {
-        return;
-    };
-    let mut node = root;
-    for segment in std::iter::once(&locale).chain(parents) {
-        let entry = node
-            .entry(segment.to_string())
-            .or_insert_with(|| Json::Object(Map::new()));
-        if !entry.is_object() {
-            *entry = Json::Object(Map::new());
-        }
-        let Json::Object(next) = entry else {
-            return;
-        };
-        node = next;
-    }
-    if !node.get(*last).is_some_and(Json::is_object) {
-        node.insert((*last).to_string(), value);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,7 +135,8 @@ mod tests {
             &serde_json::from_str(json).unwrap(),
             &mut Vec::new(),
             &mut out,
-        );
+        )
+        .unwrap();
         out
     }
 
@@ -195,10 +167,8 @@ mod tests {
     }
 
     #[test]
-    fn a_key_holding_a_dot_keeps_its_segments() {
-        let got = leaves(r#"{"rate":{"2.5":"x"}}"#);
-        assert_eq!(got[0].key, "rate.2.5");
-        assert_eq!(got[0].segments(), ["rate", "2.5"]);
-        assert_eq!(got[0].depth, 2);
+    fn a_nested_key_has_its_depth() {
+        let got = leaves(r#"{"a":{"b":{"c":"x"}}}"#);
+        assert_eq!((got[0].key.as_str(), got[0].depth), ("a.b.c", 3));
     }
 }

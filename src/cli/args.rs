@@ -52,7 +52,7 @@ pub(crate) enum Format {
     /// The gem's JSON for `missing`, `data` and `data-merge`; the report
     /// envelope elsewhere.
     Json,
-    /// This tool's JSON envelope, on every command.
+    /// This tool's JSON envelope; the gem's JSON for `data` and `data-merge`.
     Report,
 }
 
