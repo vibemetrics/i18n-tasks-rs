@@ -868,8 +868,9 @@ data to the same files as the gem, in the emitter's quoting (B1). The rest:
   before a file is written.
 - An empty mapping adds nothing. The gem prints it as `{}` and does not write
   it.
-- A key that holds a dot is an error. The gem keeps it as one segment; here
-  it cannot be told from nested keys, so merging it would overwrite them.
+- A key that holds a dot, given or already in the data, is an error where it
+  meets another key on the same dotted path. The gem keeps it as one segment;
+  here it cannot be told from nested keys, so merging would overwrite them.
 - It writes without `--write`, as the gem does: an exception to B8. A file
   that ends up empty is deleted only under `--allow-delete`, as for
   `normalize`.

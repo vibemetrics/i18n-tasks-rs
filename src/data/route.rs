@@ -295,7 +295,7 @@ pub fn origin_paths(store: &Store, locale: &str) -> Vec<PathBuf> {
     tree.leaves
         .iter()
         .map(|l| l.path.to_path_buf())
-        .chain(tree.vacated.iter().cloned())
+        .chain(tree.origins.iter().cloned())
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect()

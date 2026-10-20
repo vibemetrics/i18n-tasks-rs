@@ -76,6 +76,16 @@ pub fn merge(
         }
         let mut leaves = Vec::new();
         flatten(root, &mut Vec::new(), &mut leaves)?;
+        for dotted in tree.leaves.iter().filter(|l| l.odd_segments.is_some()) {
+            if let Some(leaf) = leaves.iter().find(|leaf| overlaps(&leaf.key, &dotted.key)) {
+                return Err(format!(
+                    "`{locale}.{}` collides with the key {:?}, which holds a dot. \
+                     data-merge cannot tell the two apart",
+                    leaf.key,
+                    dotted.segments()
+                ));
+            }
+        }
         leaves.retain(|leaf| !tree.is_interior(&leaf.key));
         let ancestors: HashSet<String> = leaves
             .iter()
@@ -109,11 +119,33 @@ fn flatten(node: &Json, prefix: &mut Vec<String>, out: &mut Vec<Leaf>) -> Result
     Ok(())
 }
 
+fn overlaps(a: &str, b: &str) -> bool {
+    let within = |long: &str, short: &str| {
+        long.strip_prefix(short)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
+    };
+    within(a, b) || within(b, a)
+}
+
+fn psych_float(n: &serde_json::Number) -> String {
+    let text = n.to_string();
+    let Some((mantissa, exponent)) = text.split_once(['e', 'E']) else {
+        return text;
+    };
+    let dot = if mantissa.contains('.') { "" } else { ".0" };
+    let sign = if exponent.starts_with(['-', '+']) {
+        ""
+    } else {
+        "+"
+    };
+    format!("{mantissa}{dot}e{sign}{exponent}")
+}
+
 fn to_value(json: &Json) -> Value {
     match json {
         Json::Null => Value::Nil,
         Json::Bool(b) => Value::Bool(*b),
-        Json::Number(n) => Value::Plain(n.to_string()),
+        Json::Number(n) => Value::Plain(psych_float(n)),
         Json::String(s) => Value::Str(s.clone()),
         Json::Array(items) => Value::Seq(items.iter().map(to_value).collect()),
         Json::Object(entries) => Value::Map(
@@ -164,6 +196,22 @@ mod tests {
                 ("z".to_string(), Value::Nil),
             ]
         );
+    }
+
+    #[test]
+    fn a_json_number_round_trips_through_what_psych_reads() {
+        for number in [
+            "5",
+            "-3",
+            "1.5",
+            "1e20",
+            "1.5e-7",
+            "-2E+30",
+            "123456789012345678",
+        ] {
+            let json: Json = serde_json::from_str(number).unwrap();
+            assert_eq!(to_value(&json).to_json(), json, "{number}");
+        }
     }
 
     #[test]

@@ -197,10 +197,10 @@ pub struct LocaleTree {
     /// writes one locale per file, so it refuses to touch a file that holds a
     /// locale it is not writing.
     pub file_locales: HashMap<PathBuf, Vec<String>>,
-    /// Files a dropped leaf was read from. They are origins still: a write
-    /// that no longer routes a key to one empties it.
+    /// Files the keys were read from before the tree was rebuilt, kept so a
+    /// write that routes no key to one still empties it.
     /// ref: `paths_before` in `FileSystemBase#set`.
-    pub vacated: BTreeSet<PathBuf>,
+    pub origins: BTreeSet<PathBuf>,
 }
 
 impl LocaleTree {
@@ -282,14 +282,13 @@ impl LocaleTree {
         let mut tree = LocaleTree {
             locale: self.locale.clone(),
             file_locales: self.file_locales.clone(),
-            vacated: self.vacated.clone(),
+            origins: self.origins.clone(),
             ..Default::default()
         };
         for leaf in &self.leaves {
+            tree.origins.insert(leaf.path.to_path_buf());
             if keep(leaf) {
                 tree.insert(leaf.clone());
-            } else {
-                tree.vacated.insert(leaf.path.to_path_buf());
             }
         }
         for leaf in extra {

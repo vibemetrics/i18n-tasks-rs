@@ -70,6 +70,11 @@ impl Project {
         Project { root }
     }
 
+    fn write(&self, rel: &str, contents: &str) -> &Project {
+        std::fs::write(self.root.join(rel), contents).unwrap();
+        self
+    }
+
     fn read(&self, name: &str) -> String {
         std::fs::read_to_string(self.root.join("config/locales").join(name)).unwrap()
     }
@@ -163,6 +168,42 @@ fn data_merge_deletes_a_file_it_empties_only_when_allowed() {
     assert_eq!(code, 0, "{err}");
     assert!(!p.root.join("config/locales/devise.ru.yml").exists());
     assert!(p.read("ru.yml").contains("      one:\n        x: Икс\n"));
+}
+
+#[test]
+fn data_merge_under_the_pattern_router_deletes_a_file_a_moved_key_empties_only_when_allowed() {
+    let p = Project::new("pattern-move");
+    p.write(
+        "config/i18n-tasks.yml",
+        "base_locale: en\nlocales: [en, ru]\ndata:\n  router: pattern_router\n  read:\n    - config/locales/%{locale}.yml\n    - config/locales/**/*.%{locale}.yml\n  write:\n    - config/locales/%{locale}.yml\nsearch:\n  paths: [app/]\n",
+    );
+    let input = r#"{"ru":{"devise":{"items":{"one":"одна"}}}}"#;
+    let (code, _, err) = p.merge(&["-f", "json"], input);
+    assert_eq!(code, 2, "{err}");
+    assert!(err.contains("devise.ru.yml"), "{err}");
+    assert_eq!(p.read("devise.ru.yml"), fixture_locale("devise.ru.yml"));
+
+    let (code, _, err) = p.merge(&["-f", "json", "--allow-delete"], input);
+    assert_eq!(code, 0, "{err}");
+    assert!(!p.root.join("config/locales/devise.ru.yml").exists());
+    assert!(p.read("ru.yml").contains("    items:\n      one: одна\n"));
+}
+
+#[test]
+fn data_merge_refuses_a_key_that_collides_with_a_key_holding_a_dot() {
+    let p = Project::new("dotted-existing");
+    let ru = "ru:\n  a.b: old\n  title: Заголовок\n";
+    p.write("config/locales/ru.yml", ru);
+    for input in [
+        r#"{"ru":{"a":{"b":"new"}}}"#,
+        r#"{"ru":{"a":"new"}}"#,
+        r#"{"ru":{"a":{"b":{"c":"new"}}}}"#,
+    ] {
+        let (code, _, err) = p.merge(&["-f", "json"], input);
+        assert_eq!(code, 2, "{input}: {err}");
+        assert!(err.contains("a.b"), "{input}: {err}");
+        assert_eq!(p.read("ru.yml"), ru, "{input}");
+    }
 }
 
 #[test]
