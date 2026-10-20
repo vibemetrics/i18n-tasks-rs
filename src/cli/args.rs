@@ -42,14 +42,15 @@ pub(crate) struct Common {
 /// is written once: clap validates the flag against the same list the commands
 /// then match on, and `--help` lists it.
 ///
-/// `json` is the gem's own JSON where a command prints it (`missing`), and the
-/// port's envelope elsewhere; `report` is the envelope everywhere. Accepted
-/// diff 13.
+/// `json` is the gem's own JSON where a command prints it (`missing`, `data`,
+/// `data-merge`), and the port's envelope elsewhere; `report` is the envelope
+/// wherever there is one. Accepted diffs 13 and 35.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub(crate) enum Format {
     /// A plain table.
     Text,
-    /// The gem's JSON for `missing`; the report envelope elsewhere.
+    /// The gem's JSON for `missing`, `data` and `data-merge`; the report
+    /// envelope elsewhere.
     Json,
     /// This tool's JSON envelope, on every command.
     Report,
@@ -61,7 +62,7 @@ impl Common {
     /// The flag values come first, then the positional ones. The gem
     /// concatenates rather than letting either win, so `-l es missing en`
     /// asks for both.
-    fn requested_locales(&self) -> Vec<String> {
+    pub(crate) fn requested_locales(&self) -> Vec<String> {
         self.locales
             .iter()
             .chain(&self.positional_locales)

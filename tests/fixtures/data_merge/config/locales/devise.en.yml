@@ -1,0 +1,5 @@
+en:
+  devise:
+    items:
+      one: one item
+      other: "%{count} items"

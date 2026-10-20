@@ -3,6 +3,7 @@
 
 pub(crate) mod checks;
 pub(crate) mod clean_config;
+pub(crate) mod data;
 pub(crate) mod find;
 pub(crate) mod health;
 pub(crate) mod init_config;

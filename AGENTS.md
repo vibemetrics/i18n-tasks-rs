@@ -40,7 +40,7 @@ compared over the same project.
 | `src/used.rs` | the used-key set, scanned once for every locale (decision 2) |
 | `src/yaml.rs` | the YAML reader; an anchor, alias or Symbol is an error (B4) |
 | `src/data/` | YAML load, the hand-written emitter (B1), the two routers |
-| `src/report/` | `unused`, `missing`, `eq-base`, interpolations, `normalize`, `find` |
+| `src/report/` | `unused`, `missing`, `eq-base`, interpolations, `normalize`, `find`, `data` |
 | `src/translate/` | `translate-missing`: the pending keys, batching, the OpenAI client |
 | `src/clean_config.rs` | `clean-config`: ignore rules that suppress nothing |
 | `src/session.rs` | the config, the data and the resolved locale list, loaded once |
@@ -98,8 +98,8 @@ the scope quietly.
   habit — it is how a reader checks parity.
 - **Writing is opt-in.** A command touches disk only under `--write`; deleting
   an emptied file additionally needs `--allow-delete`. Do not add a command
-  that writes by default. The exceptions are `normalize` and
-  `translate-missing`, which write as the gem's do (B8).
+  that writes by default. The exceptions are `normalize`,
+  `translate-missing` and `data-merge`, which write as the gem's do (B8).
 - **Parallelism must not change output.** `tests/jobs.rs` holds every command,
   in both formats, byte-identical at `--jobs 1`, `2`, `8`, `16` and the default.
   A change that reorders results is a bug even if the set is the same.

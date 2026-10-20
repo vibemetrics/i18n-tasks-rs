@@ -1,0 +1,7 @@
+en:
+  apples:
+    one: "%{count} apple"
+    other: "%{count} apples"
+  title: Title
+  menu:
+    home: Home

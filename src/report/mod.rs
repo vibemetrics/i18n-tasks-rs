@@ -1,3 +1,4 @@
+pub mod data;
 pub mod eq_base;
 pub mod find;
 pub mod interpolations;

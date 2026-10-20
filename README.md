@@ -36,7 +36,7 @@ Library uses some "tricks" - like early files _discovery_ to skip work when it's
 - you care mostly about checks and normalization, not so much about yaml tree operations/translations management
 
 ## What was yanked
-- all `mv` / `cp` / `rm` / `data-*` / `tree-*` operations - I didn't used those very often and you can still just use original gem if needed
+- all `mv` / `cp` / `rm` / `data-*` / `tree-*` operations but `data-merge` - I didn't used those very often and you can still just use original gem if needed
 - `add-missing` - I found this less and less relevant/useful in the agentic coding era
 - every `translate-missing` backend but OpenAI, and the `translation:` config section
 - all magical Rails i18n key references discovery (if you were using `prism` in `i18n-tasks` you won't notice that much difference; if you're using `whitequark` you probably will have some bad time)
@@ -47,6 +47,7 @@ Library uses some "tricks" - like early files _discovery_ to skip work when it's
 -  `missing` / `unused` / `check-consistent-interpolations` / `check-reserved-interpolations` / `check-normalized` (+ `health` which wraps all commands), `eq-base`, `remove-unused`
 - `normalize` - yet it will yield slightly different yaml format than gem! also see `--pattern-router` / `--allow-delete` switches
 - `# i18n-tasks-use` comment hints (might cause some quirks, feel feel free to report any issues)
+- `data` and `data-merge` with `-f json` - the gem's JSON in and out
 - `translate-missing` through OpenAI - the key and the model come from `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-4o-mini`); `OPENAI_BASE_URL` points it at another OpenAI-compatible endpoint
 
 ## What was added
@@ -81,6 +82,8 @@ i18n-tasks-rs check-normalized [-l LOCALES] [locale ...]
 i18n-tasks-rs normalize [-l LOCALES] [locale ...] [-p/--pattern-router]
                                      [--dry-run] [--allow-delete]
 i18n-tasks-rs translate-missing [-l LOCALES] [locale ...]
+i18n-tasks-rs data      [-l LOCALES] [locale ...]
+i18n-tasks-rs data-merge -f json [--allow-delete] < tree.json
 i18n-tasks-rs clean-config [-l LOCALES] [locale ...] [--write]
 i18n-tasks-rs health    [-l LOCALES] [locale ...] [-q/--quiet]
 i18n-tasks-rs find      [-l LOCALES] [locale ...]
@@ -90,10 +93,11 @@ i18n-tasks-rs migrate-config [-i/--from PATH] [-o/--to PATH]
 ```
 
 Project-reading commands also accept `-c/--config PATH`, `-f/--format
-text|json|report`, `--root PATH`, and `-j/--jobs N`. `missing -f json` prints
-the gem's JSON; `-f report` is this tool's JSON envelope on every command.
-`remove-unused` and `clean-config` do not write unless `--write` is present;
-`normalize` and `translate-missing` write, as the gem's do. Use each command's
+text|json|report`, `--root PATH`, and `-j/--jobs N`. `missing`, `data` and
+`data-merge` print the gem's JSON under `-f json`; `-f report` is this tool's
+JSON envelope on every other command. `remove-unused` and `clean-config` do not
+write unless `--write` is present; `normalize`, `translate-missing` and
+`data-merge` write, as the gem's do. Use each command's
 `--help` output as the complete option reference.
 
 ## Config syntax

@@ -285,7 +285,8 @@ terminal-table and Rainbow are replaced with a plain aligned table.
 (`used` leaves `null`, `plural` leaves the locale's existing forms).
 
 **Here.** `missing -f json` prints the same, byte for byte for every type
-(`tests/missing_json.rs`, against goldens recorded from gem 1.1.2). A plain
+(`tests/missing_json.rs`, against goldens recorded from gem 1.1.2), and so do
+`data` and `data-merge` (entry 35). A plain
 scalar becomes the number Psych reads (`010` is 8, `0x1f` is 31, `1:30` is
 5400, `1e5` stays a string), and a Symbol inside a sequence is its name. The
 remaining differences are in values or orders no consumer of ours reads:
@@ -672,8 +673,8 @@ prints the decimal too.
 
 **Here.** `yaml::resolve_plain` names the type; the value keeps its source text
 (`Value::Plain`) and is written back byte for byte. So `normalize` leaves
-`hexy: 0x1f` alone, and `missing`, `unused` and `data` print `0x1f` where the
-gem prints `31`.
+`hexy: 0x1f` alone, and the text reports and `data`'s YAML print `0x1f` where
+the gem prints `31`.
 
 Psych reads the same integer from either spelling, so the value the Rails app
 sees is the same. The difference is visible in two places only: the source text
@@ -842,3 +843,32 @@ interpolation without a word.
   `normalize` writes them. The configured router places each new key;
   every existing key stays in its file, while the gem's pattern router moves
   them.
+
+## 35. `data` and `data-merge` — JSON only, as Bondata calls them
+
+**Gem.** `data.rb:77-95`. `data [locale ...]` prints the locales' trees, and
+`data-merge [tree ...]` merges the trees from stdin and the arguments into the
+data (`file_system_base.rb#merge!`), writes every file of each merged locale
+through the router, deleting a file that ends up empty, and prints the merged
+locales whole. `-f` picks the format of both, from `terminal-table`, `yaml`,
+`json`, `keys`, `inspect` and `key-values` for `data` and `yaml`, `json` and
+`keys` for `data-merge`; `-S` skips stdin.
+
+**Here.** `-f json` prints the gem's JSON byte for byte (`tests/data.rs`,
+against goldens recorded from gem 1.1.2), and `data-merge` writes the same
+data to the same files as the gem. On vibemetrics-api's 38 locales `data` and
+a plural-filling merge print what the gem prints, and the written files differ
+only in the emitter's quoting (B1). The rest:
+
+- `data` prints the locale files' YAML as text and the gem's JSON under both
+  `-f json` and `-f report`: it has no report to wrap.
+- `data-merge` reads only JSON on stdin, needs `-f json` (or `-f report`), and
+  takes no positional trees, no locales and no `-S`.
+- A locale outside the config is an error for both, where the gem prints an
+  empty tree for `data` and merges it for `data-merge`. Any bad input fails
+  before a file is written.
+- An empty mapping adds nothing. The gem prints it as `{}` and does not write
+  it.
+- It writes without `--write`, as the gem does: an exception to B8. A file
+  that ends up empty is deleted only under `--allow-delete`, as for
+  `normalize`.

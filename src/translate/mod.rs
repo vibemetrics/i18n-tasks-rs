@@ -9,7 +9,7 @@ pub mod openai;
 
 use crate::config::{Config, DataConfig, IgnoreType, Router};
 use crate::data::load::{Leaf, Store, Value};
-use crate::data::route::{self, ConservativeRouter, PatternRouter};
+use crate::data::route;
 use crate::keys::parent_key;
 use crate::report::interpolations::variables;
 use crate::report::missing::diff_leaves;
@@ -18,7 +18,7 @@ use crate::report::{KeyRow, render_table};
 use crate::session::Session;
 use regex::Regex;
 use std::collections::{BTreeSet, HashSet};
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 /// ref: openai_translator.rb:11
 pub const BATCH_SIZE: usize = 50;
@@ -301,28 +301,13 @@ pub fn merge(
     store: &mut Store,
     translated: Vec<LocaleLeaves>,
 ) -> Result<NormalizeReport, String> {
-    let pattern = PatternRouter::new(cfg);
     let mut routed = Vec::with_capacity(translated.len());
-    {
-        let conservative = ConservativeRouter::new(&pattern, store, &cfg.root);
-        for LocaleLeaves { locale, leaves } in translated {
-            if leaves.is_empty() {
-                continue;
-            }
-            let mut out = Vec::with_capacity(leaves.len());
-            for leaf in leaves {
-                let path = if cfg.data.router == Router::Pattern {
-                    pattern.route_key(&locale, &leaf.key)?
-                } else {
-                    conservative.route_key(&locale, &leaf.key)?
-                };
-                out.push(Leaf {
-                    path: Arc::from(path.as_path()),
-                    ..leaf
-                });
-            }
-            routed.push((locale, out));
+    for LocaleLeaves { locale, leaves } in translated {
+        if leaves.is_empty() {
+            continue;
         }
+        let leaves = route::route_leaves(cfg, store, &locale, leaves)?;
+        routed.push((locale, leaves));
     }
     let in_place = Config {
         data: DataConfig {
@@ -396,6 +381,7 @@ pub fn to_json(session: &Session, rows: &[KeyRow]) -> Result<String, String> {
 mod tests {
     use super::*;
     use std::path::Path;
+    use std::sync::Arc;
 
     fn leaf(key: &str, value: Value) -> Leaf {
         Leaf {

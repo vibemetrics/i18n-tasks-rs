@@ -12,6 +12,7 @@ pub(crate) mod pool;
 
 use crate::cli::commands::checks::{CheckArgs, MissingArgs};
 use crate::cli::commands::clean_config::CleanConfigArgs;
+use crate::cli::commands::data::{DataArgs, DataMergeArgs};
 use crate::cli::commands::find::FindArgs;
 use crate::cli::commands::health::HealthArgs;
 use crate::cli::commands::init_config::InitConfigArgs;
@@ -68,6 +69,13 @@ enum Command {
     /// Reads OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini) and
     /// OPENAI_BASE_URL. Writes the translations, as the gem does.
     TranslateMissing(TranslateMissingArgs),
+    /// Print the locales' data: YAML, or the gem's JSON under `-f json`.
+    Data(DataArgs),
+    /// Merge the JSON tree on stdin into the data, write it, and print the
+    /// merged locales.
+    ///
+    /// Writes, as the gem does. Needs `-f json`.
+    DataMerge(DataMergeArgs),
     /// Remove ignore rules that suppress no current issue.
     CleanConfig(CleanConfigArgs),
     /// Run every check and print the statistics header.
@@ -99,6 +107,8 @@ impl Command {
             Command::CheckNormalized(a) => a.normalized(),
             Command::Normalize(a) => a.run(),
             Command::TranslateMissing(a) => a.run(),
+            Command::Data(a) => a.run(),
+            Command::DataMerge(a) => a.run(),
             Command::CleanConfig(a) => a.run(),
             Command::Health(a) => a.run(),
             Command::Find(a) => a.run(),

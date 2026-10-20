@@ -246,12 +246,21 @@ impl LocaleTree {
 
     #[must_use]
     pub fn extended(&self, extra: impl IntoIterator<Item = Leaf>) -> LocaleTree {
+        self.replaced(|_| true, extra)
+    }
+
+    #[must_use]
+    pub fn replaced(
+        &self,
+        keep: impl Fn(&Leaf) -> bool,
+        extra: impl IntoIterator<Item = Leaf>,
+    ) -> LocaleTree {
         let mut tree = LocaleTree {
             locale: self.locale.clone(),
             file_locales: self.file_locales.clone(),
             ..Default::default()
         };
-        for leaf in self.leaves.iter().cloned().chain(extra) {
+        for leaf in self.leaves.iter().filter(|l| keep(l)).cloned().chain(extra) {
             tree.insert(leaf);
         }
         tree.finish();

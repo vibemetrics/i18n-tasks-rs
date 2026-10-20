@@ -5,10 +5,11 @@
 //! ref: lib/i18n/tasks/locale_pathname.rb#replace_locale
 
 use crate::config::{Config, Router, interpolate_locale};
-use crate::data::load::Store;
+use crate::data::load::{Leaf, Store};
 use crate::pattern::Pattern;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Destination {
@@ -182,6 +183,40 @@ impl<'a> ConservativeRouter<'a> {
         }
         self.fallback.route_key(locale, key)
     }
+}
+
+/// Gives each leaf the file the configured router writes it to.
+///
+/// # Errors
+///
+/// A key cannot be routed.
+pub fn route_leaves(
+    cfg: &Config,
+    store: &Store,
+    locale: &str,
+    leaves: Vec<Leaf>,
+) -> Result<Vec<Leaf>, String> {
+    let pattern = PatternRouter::new(cfg);
+    let conservative = ConservativeRouter::new(&pattern, store, &cfg.root);
+    leaves
+        .into_iter()
+        .map(|leaf| {
+            let path = if cfg.data.router == Router::Pattern {
+                pattern.route_key(locale, &leaf.key)?
+            } else {
+                conservative.route_key(locale, &leaf.key)?
+            };
+            let path = if path.is_absolute() {
+                path
+            } else {
+                cfg.root.join(path)
+            };
+            Ok(Leaf {
+                path: Arc::from(path.as_path()),
+                ..leaf
+            })
+        })
+        .collect()
 }
 
 /// Groups every key of one locale by the file it is written to.
