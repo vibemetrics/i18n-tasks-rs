@@ -44,7 +44,7 @@ compared over the same project.
 | `src/translate/` | `translate-missing`: the pending keys, batching, the OpenAI client |
 | `src/clean_config.rs` | `clean-config`: ignore rules that suppress nothing |
 | `src/session.rs` | the config, the data and the resolved locale list, loaded once |
-| `src/check.rs` | the CLI's name per check, and the `-f json` envelopes |
+| `src/check.rs` | the CLI's name per check, and the `-f report` envelopes |
 | `src/cli/` | clap only: shared flags, exit codes, printing macros, one module per command |
 | `src/main.rs` | the entry point: run the command, print the error, pick the code |
 | `tests/` | integration tests; `fixtures/` from the gem, `golden/` for the emitter |
