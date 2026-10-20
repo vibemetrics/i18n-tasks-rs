@@ -274,14 +274,24 @@ pub fn plan_files(
     })
 }
 
-/// Every locale's read is consulted, external data included, not only
-/// `locale`'s: a file this locale never read, such as the base locale's, can
-/// still be its destination.
+/// Every locale's read is consulted, not only `locale`'s: a file this locale
+/// never read, such as the base locale's, can still be its destination. An
+/// external file is never one: its keys are not in the tree written to it.
 fn check_foreign_locales(store: &Store, path: &Path, locale: &str) -> Result<(), String> {
+    if store
+        .external
+        .values()
+        .any(|tree| tree.file_locales.contains_key(path))
+    {
+        return Err(format!(
+            "{} is external data (`data.external`), which is never written. \
+             Route `data.write` elsewhere.",
+            path.display()
+        ));
+    }
     let mut foreign: Vec<&str> = store
         .trees
         .values()
-        .chain(store.external.values())
         .filter_map(|tree| tree.file_locales.get(path))
         .flatten()
         .map(String::as_str)

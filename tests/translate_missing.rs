@@ -357,22 +357,23 @@ fn a_project_inside_a_directory_named_like_a_locale_keeps_its_root() {
 
 #[test]
 fn a_new_key_is_never_written_into_an_external_file() {
-    let p = project("external-file");
-    let shared = "en:\n  brand: Acme\n";
-    p.write(
-        "config/i18n-tasks.yml",
-        "base_locale: en\nlocales: [en, de]\ndata:\n  router: pattern_router\n  read:\n    - config/locales/%{locale}.yml\n  external:\n    - config/locales/shared.yml\n  write:\n    - config/locales/shared.yml\nsearch:\n  paths: [app/]\n",
-    )
-    .write("config/locales/shared.yml", shared);
-    let server = FakeOpenAi::start();
-    let env = [
-        ("OPENAI_API_KEY", "sk-test"),
-        ("OPENAI_BASE_URL", server.url.as_str()),
-    ];
-    let (code, out) = p.run(&["translate-missing", "de"], &env);
-    assert_eq!(code, 2, "{out}");
-    assert!(out.contains("shared.yml"), "{out}");
-    assert_eq!(p.read("config/locales/shared.yml"), shared);
+    for shared in ["en:\n  brand: Acme\n", "de:\n  brand: Acme\n"] {
+        let p = project("external-file");
+        p.write(
+            "config/i18n-tasks.yml",
+            "base_locale: en\nlocales: [en, de]\ndata:\n  router: pattern_router\n  read:\n    - config/locales/%{locale}.yml\n  external:\n    - config/locales/shared.yml\n  write:\n    - config/locales/shared.yml\nsearch:\n  paths: [app/]\n",
+        )
+        .write("config/locales/shared.yml", shared);
+        let server = FakeOpenAi::start();
+        let env = [
+            ("OPENAI_API_KEY", "sk-test"),
+            ("OPENAI_BASE_URL", server.url.as_str()),
+        ];
+        let (code, out) = p.run(&["translate-missing", "de"], &env);
+        assert_eq!(code, 2, "{shared}: {out}");
+        assert!(out.contains("shared.yml"), "{out}");
+        assert_eq!(p.read("config/locales/shared.yml"), shared);
+    }
 }
 
 #[test]

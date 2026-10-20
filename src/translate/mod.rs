@@ -37,6 +37,13 @@ static INTERPOLATION: LazyLock<Regex> =
 static PLACEHOLDER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"X__(\d+)").expect("static pattern compiles"));
 
+#[allow(
+    clippy::expect_used,
+    reason = "a static pattern that fails to compile is a bug here, not a run-time condition"
+)]
+static DIGIT_AFTER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"%\{[^}]+\}\d").expect("static pattern compiles"));
+
 #[derive(Debug, Clone)]
 pub struct LocaleLeaves {
     pub locale: String,
@@ -90,8 +97,9 @@ pub fn translate(
         if has_ambiguous_placeholder(&leaf.value) {
             failures.push(Failure {
                 keys: vec![leaf.key.clone()],
-                error: "the source holds a literal `X__n` beside an interpolation, \
-                        which the placeholders cannot tell apart"
+                error: "the source holds an interpolation that its `X__n` placeholder \
+                        cannot restore unambiguously: a literal `X__n`, or a digit \
+                        right after it"
                     .to_string(),
             });
             continue;
@@ -223,7 +231,9 @@ fn implode(value: &Value, translated: &mut impl Iterator<Item = String>) -> Resu
 
 fn has_ambiguous_placeholder(value: &Value) -> bool {
     match value {
-        Value::Str(s) => INTERPOLATION.is_match(s) && PLACEHOLDER.is_match(s),
+        Value::Str(s) => {
+            INTERPOLATION.is_match(s) && (PLACEHOLDER.is_match(s) || DIGIT_AFTER.is_match(s))
+        }
         Value::Seq(items) => items.iter().any(has_ambiguous_placeholder),
         Value::Map(entries) => entries.iter().any(|(_, v)| has_ambiguous_placeholder(v)),
         _ => false,
@@ -521,6 +531,7 @@ mod tests {
         let leaves = [
             leaf("device", s("Device X__0 belongs to %{name}")),
             leaf("code", s("Code X__0")),
+            leaf("tens", s("%{count}0 apples")),
         ];
         let mut sent = Vec::new();
         let out = translate(
@@ -532,8 +543,12 @@ mod tests {
             },
         );
         assert_eq!(sent, ["Code X__0"]);
-        assert_eq!(out.failures.len(), 1);
-        assert_eq!(out.failures[0].keys, ["device"]);
+        let failed: Vec<&str> = out
+            .failures
+            .iter()
+            .flat_map(|f| f.keys.iter().map(String::as_str))
+            .collect();
+        assert_eq!(failed, ["device", "tens"]);
         assert_eq!(out.leaves.len(), 1);
         assert_eq!(out.leaves[0].value, s("Code X__0"));
     }
