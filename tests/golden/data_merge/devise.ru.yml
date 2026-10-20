@@ -1,0 +1,6 @@
+---
+ru:
+  devise:
+    items:
+      one: один
+      other: предметов

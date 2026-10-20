@@ -2,7 +2,7 @@
 //!
 //! ref: lib/i18n/tasks/missing_keys.rb
 
-use super::{KeyRow, Outcome, Reason, render_table};
+use super::{KeyRow, Outcome, Reason, put, render_table};
 use crate::config::{Config, IgnoreType};
 use crate::data::load::{Leaf, LocaleTree, Store};
 use crate::pattern::PatternSet;
@@ -231,35 +231,6 @@ pub fn tree(
         }
     }
     serde_json::Value::Object(out)
-}
-
-/// Sets `value` at `locale` and `segments`. A mapping wins over a leaf, as in
-/// the gem's `merge!`.
-fn put(
-    root: &mut serde_json::Map<String, serde_json::Value>,
-    locale: &str,
-    segments: &[&str],
-    value: serde_json::Value,
-) {
-    let Some((last, parents)) = segments.split_last() else {
-        return;
-    };
-    let mut node = root;
-    for segment in std::iter::once(&locale).chain(parents) {
-        let entry = node
-            .entry(segment.to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        if !entry.is_object() {
-            *entry = serde_json::Value::Object(serde_json::Map::new());
-        }
-        let serde_json::Value::Object(next) = entry else {
-            return;
-        };
-        node = next;
-    }
-    if !node.get(*last).is_some_and(serde_json::Value::is_object) {
-        node.insert((*last).to_string(), value);
-    }
 }
 
 /// A plural node missing a required CLDR category.

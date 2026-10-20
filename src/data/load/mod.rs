@@ -20,7 +20,7 @@ pub use locale_path::locale_for_path;
 use crate::config::{Config, interpolate_locale};
 use crate::yaml::{self, Node, Resolved};
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -121,6 +121,25 @@ pub struct Leaf {
 }
 
 impl Leaf {
+    pub fn new(segments: &[String], value: Value, path: Arc<Path>) -> Leaf {
+        Leaf {
+            key: segments.join("."),
+            value,
+            // The loader recurses once per level, so the stack gives out long
+            // before 65 535 nested maps; saturating keeps the count monotone
+            // if it ever did not.
+            depth: u16::try_from(segments.len()).unwrap_or(u16::MAX),
+            path,
+            odd_segments: segments.iter().any(|s| s.contains('.')).then(|| {
+                segments
+                    .iter()
+                    .map(|s| s.as_str().into())
+                    .collect::<Vec<Box<str>>>()
+                    .into_boxed_slice()
+            }),
+        }
+    }
+
     pub fn segments(&self) -> Vec<&str> {
         match &self.odd_segments {
             Some(segs) => segs.iter().map(AsRef::as_ref).collect(),
@@ -178,6 +197,10 @@ pub struct LocaleTree {
     /// writes one locale per file, so it refuses to touch a file that holds a
     /// locale it is not writing.
     pub file_locales: HashMap<PathBuf, Vec<String>>,
+    /// Files the keys were read from before the tree was rebuilt, kept so a
+    /// write that routes no key to one still empties it.
+    /// ref: `paths_before` in `FileSystemBase#set`.
+    pub origins: BTreeSet<PathBuf>,
 }
 
 impl LocaleTree {
@@ -246,12 +269,29 @@ impl LocaleTree {
 
     #[must_use]
     pub fn extended(&self, extra: impl IntoIterator<Item = Leaf>) -> LocaleTree {
+        self.replaced(|_| true, extra)
+    }
+
+    /// The leaves `keep` accepts, then `extra`, which wins on a shared key.
+    #[must_use]
+    pub fn replaced(
+        &self,
+        keep: impl Fn(&Leaf) -> bool,
+        extra: impl IntoIterator<Item = Leaf>,
+    ) -> LocaleTree {
         let mut tree = LocaleTree {
             locale: self.locale.clone(),
             file_locales: self.file_locales.clone(),
+            origins: self.origins.clone(),
             ..Default::default()
         };
-        for leaf in self.leaves.iter().cloned().chain(extra) {
+        for leaf in &self.leaves {
+            tree.origins.insert(leaf.path.to_path_buf());
+            if keep(leaf) {
+                tree.insert(leaf.clone());
+            }
+        }
+        for leaf in extra {
             tree.insert(leaf);
         }
         tree.finish();
@@ -536,22 +576,11 @@ fn flatten(
             if prefix.is_empty() {
                 return Ok(());
             }
-            let replaced = out.insert(Leaf {
-                key: prefix.join("."),
-                value: to_value(node, path, false)?,
-                // `flatten` recurses once per level, so the stack gives out
-                // long before 65 535 nested maps; saturating keeps the count
-                // monotone if it ever did not.
-                depth: u16::try_from(prefix.len()).unwrap_or(u16::MAX),
-                path: Arc::clone(file),
-                odd_segments: prefix.iter().any(|s| s.contains('.')).then(|| {
-                    prefix
-                        .iter()
-                        .map(|s| s.as_str().into())
-                        .collect::<Vec<Box<str>>>()
-                        .into_boxed_slice()
-                }),
-            });
+            let replaced = out.insert(Leaf::new(
+                prefix,
+                to_value(node, path, false)?,
+                Arc::clone(file),
+            ));
             // The sorted order is Rails' default. An app that adds its own
             // paths to `config.i18n.load_path` can read the files in another
             // order, so a disagreement is worth a look.

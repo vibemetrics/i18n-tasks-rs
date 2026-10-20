@@ -1,0 +1,6 @@
+ru:
+  apples:
+    one: "%{count} яблоко"
+  title: Заголовок
+  menu:
+    home: Главная

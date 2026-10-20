@@ -1,3 +1,4 @@
+pub mod data;
 pub mod eq_base;
 pub mod find;
 pub mod interpolations;
@@ -6,7 +7,32 @@ pub mod normalize;
 pub mod unused;
 
 use serde::Serialize;
+use serde_json::{Map, Value as Json};
 use std::path::PathBuf;
+
+/// Sets `value` at `locale` and `segments` of the gem's JSON forest. A mapping
+/// wins over a leaf, as in the gem's `merge!`.
+pub(crate) fn put(root: &mut Map<String, Json>, locale: &str, segments: &[&str], value: Json) {
+    let Some((last, parents)) = segments.split_last() else {
+        return;
+    };
+    let mut node = root;
+    for segment in std::iter::once(&locale).chain(parents) {
+        let entry = node
+            .entry(segment.to_string())
+            .or_insert_with(|| Json::Object(Map::new()));
+        if !entry.is_object() {
+            *entry = Json::Object(Map::new());
+        }
+        let Json::Object(next) = entry else {
+            return;
+        };
+        node = next;
+    }
+    if !node.get(*last).is_some_and(Json::is_object) {
+        node.insert((*last).to_string(), value);
+    }
+}
 
 /// Whether a check found anything. Exit code 1 means "found something",
 /// matching the gem's internal `:exit1`.
