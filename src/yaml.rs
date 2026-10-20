@@ -344,16 +344,19 @@ pub fn psych_number(s: &str) -> Option<serde_json::Value> {
         } else {
             (10, body)
         };
-        let n = match u128::from_str_radix(body, radix) {
-            Ok(magnitude) => {
-                let n = i128::try_from(magnitude).ok()?;
-                if negative { -n } else { n }
+        let n = match u128::from_str_radix(body, radix).map(i128::try_from) {
+            Ok(Ok(magnitude)) => {
+                if negative {
+                    -magnitude
+                } else {
+                    magnitude
+                }
             }
-            Err(_) if radix == 10 => {
+            _ if radix == 10 => {
                 let n: f64 = body.parse().ok()?;
                 return serde_json::Number::from_f64(if negative { -n } else { n }).map(Into::into);
             }
-            Err(_) => return None,
+            _ => return None,
         };
         return Some(integer_json(n));
     }
