@@ -294,8 +294,8 @@ remaining differences are in values or orders no consumer of ours reads:
   order inside that one value.
 - A mapping inside a sequence comes out with its keys sorted; Ruby keeps their
   order.
-- An integer beyond 64 bits becomes a float, and a float of 1e16 or more is
-  written `1e16` where Ruby writes `1.0e+16`.
+- An integer beyond 64 bits becomes a float, and a large float is written
+  `1e+20` where Ruby writes `1.0e+20`.
 - A date is printed as written; the gem refuses the file
   (`Psych::DisallowedClass`).
 

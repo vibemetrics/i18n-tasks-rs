@@ -905,6 +905,10 @@ mod tests {
         assert_eq!(psych("1.5e+3"), "1500.0");
         assert_eq!(psych("1."), "1.0");
         assert_eq!(psych("0o17"), r#""0o17""#);
+        assert_eq!(psych("-9223372036854775808"), "-9223372036854775808");
+        assert_eq!(psych("18446744073709551615"), "18446744073709551615");
+        assert_eq!(psych("99999999999999999999"), "1e+20");
+        assert_eq!(psych("-99999999999999999999"), "-1e+20");
         assert_eq!(psych(".inf"), r#"".inf""#);
     }
 

@@ -344,10 +344,36 @@ pub fn psych_number(s: &str) -> Option<serde_json::Value> {
         } else {
             (10, body)
         };
-        let n = i64::from_str_radix(body, radix).ok()?;
-        return Some(if negative { -n } else { n }.into());
+        let n = match u128::from_str_radix(body, radix) {
+            Ok(magnitude) => {
+                let n = i128::try_from(magnitude).ok()?;
+                if negative { -n } else { n }
+            }
+            Err(_) if radix == 10 => {
+                let n: f64 = body.parse().ok()?;
+                return serde_json::Number::from_f64(if negative { -n } else { n }).map(Into::into);
+            }
+            Err(_) => return None,
+        };
+        return Some(integer_json(n));
     }
     None
+}
+
+/// An integer as JSON: exact within 64 bits, a float beyond, where Ruby keeps
+/// every digit. Accepted diff 13.
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "beyond 64 bits JSON here has only a float to offer"
+)]
+fn integer_json(n: i128) -> serde_json::Value {
+    if let Ok(n) = i64::try_from(n) {
+        n.into()
+    } else if let Ok(n) = u64::try_from(n) {
+        n.into()
+    } else {
+        serde_json::Number::from_f64(n as f64).map_or(serde_json::Value::Null, Into::into)
+    }
 }
 
 #[allow(
