@@ -98,8 +98,8 @@ the scope quietly.
   habit — it is how a reader checks parity.
 - **Writing is opt-in.** A command touches disk only under `--write`; deleting
   an emptied file additionally needs `--allow-delete`. Do not add a command
-  that writes by default. The exception is `translate-missing`, which writes
-  as the gem's does (B8).
+  that writes by default. The exceptions are `normalize` and
+  `translate-missing`, which write as the gem's do (B8).
 - **Parallelism must not change output.** `tests/jobs.rs` holds every command,
   in both formats, byte-identical at `--jobs 1`, `2`, `8`, `16` and the default.
   A change that reorders results is a bug even if the set is the same.

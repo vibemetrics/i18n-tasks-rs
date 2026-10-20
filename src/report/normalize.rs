@@ -80,7 +80,7 @@ impl NormalizeReport {
             out.push_str(&c.display);
             out.push('\n');
         }
-        out.push_str("Run `i18n-tasks-rs normalize --write` to fix\n");
+        out.push_str("Run `i18n-tasks-rs normalize` to fix\n");
         out
     }
 

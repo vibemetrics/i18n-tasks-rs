@@ -55,7 +55,7 @@ Library uses some "tricks" - like early files _discovery_ to skip work when it's
 ## How to migrate
 1. Grab binary from the [releases page](https://github.com/rwojsznis/i18n-tasks-rs/releases) (nowadays [I recommend using mise](https://mise.jdx.dev/dev-tools/backends/github.html) for local env)
 2. Preview the migrated config with `i18n-tasks-rs migrate-config`, then add `--write` to save it
-3. Run `i18n-tasks-rs normalize` -- check if it looks good - then do same command with `--write` switch
+3. Run `i18n-tasks-rs normalize --dry-run` -- check if it looks good - then run `i18n-tasks-rs normalize` to write it
 4. Run `i18n-tasks-rs health` - you most likely will need to adapt few things, you can try to just paste the output into your _agent_.
 5. Once you're happy with results you can replace `i18n-tasks` calls with `i18n-tasks-rs`
 6. Enjoy those previous saved seconds.
@@ -79,7 +79,7 @@ i18n-tasks-rs check-consistent-interpolations [-l LOCALES] [locale ...]
 i18n-tasks-rs check-reserved-interpolations   [-l LOCALES] [locale ...]
 i18n-tasks-rs check-normalized [-l LOCALES] [locale ...]
 i18n-tasks-rs normalize [-l LOCALES] [locale ...] [-p/--pattern-router]
-                                     [--write | --dry-run] [--allow-delete]
+                                     [--dry-run] [--allow-delete]
 i18n-tasks-rs translate-missing [-l LOCALES] [locale ...]
 i18n-tasks-rs clean-config [-l LOCALES] [locale ...] [--write]
 i18n-tasks-rs health    [-l LOCALES] [locale ...] [-q/--quiet]
@@ -92,8 +92,8 @@ i18n-tasks-rs migrate-config [-i/--from PATH] [-o/--to PATH]
 Project-reading commands also accept `-c/--config PATH`, `-f/--format
 text|json|report`, `--root PATH`, and `-j/--jobs N`. `missing -f json` prints
 the gem's JSON; `-f report` is this tool's JSON envelope on every command.
-`remove-unused`, `normalize` and `clean-config` do not write unless `--write`
-is present; `translate-missing` writes, as the gem's does. Use each command's
+`remove-unused` and `clean-config` do not write unless `--write` is present;
+`normalize` and `translate-missing` write, as the gem's do. Use each command's
 `--help` output as the complete option reference.
 
 ## Config syntax

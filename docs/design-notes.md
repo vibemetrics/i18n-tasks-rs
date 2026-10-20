@@ -155,9 +155,11 @@ to apply, `--dry-run` for the diff, and `--allow-delete` on top of `--write`
 before any file is removed. The list of files that would be deleted is always
 printed, flag or not.
 
-The one exception is `translate-missing`, which writes as the gem's does: the
-fork replaces the gem with its interface for what Bondata uses. It only adds
-keys, so it never empties a file.
+`normalize` and `translate-missing` are the exceptions: they write as the gem's
+do, because the fork replaces the gem with its interface for what Bondata uses.
+`normalize --dry-run` still prints the diff, and a deletion still needs
+`--allow-delete`. `translate-missing` only adds keys, so it never empties a
+file.
 
 ### B9. `ruby-prism` crate lifetimes
 
