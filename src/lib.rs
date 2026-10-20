@@ -1,6 +1,5 @@
-// A panicking library is a bug: this crate returns `Result` everywhere and a
-// command writes only under `--write` or where the gem's writes (blocker B8). Declared here rather than in
-// `Cargo.toml`, because a manifest `[lints]` table also covers `tests/`, where a
+// A panicking library is a bug: this crate returns `Result` everywhere.
+// Declared here rather than in `Cargo.toml`, because a manifest `[lints]` table also covers `tests/`, where a
 // panic *is* the failure report. `clippy.toml` exempts the unit tests in `src/`.
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

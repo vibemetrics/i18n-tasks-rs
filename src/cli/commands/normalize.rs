@@ -1,5 +1,5 @@
-//! ref: lib/i18n/tasks/command/commands/data.rb:6-22. Writes, as the gem's
-//! does, and prints nothing on success; the exception to blocker B8.
+//! ref: lib/i18n/tasks/command/commands/data.rb:14-22. Writes, as the gem's
+//! does, and prints no text on success; an exception to blocker B8.
 //! `--dry-run` prints the diff instead, and a deletion still needs
 //! `--allow-delete`.
 
@@ -9,9 +9,6 @@ use crate::cli::exit::ExitStatus;
 use crate::cli::out::{out, outln};
 use i18n_tasks_rs::report::normalize;
 
-/// Three `bool`s, so to the type checker they are the same thing and a
-/// transposed pair compiles. Every one is read by name, off `self`, and never
-/// passed on positionally.
 #[derive(clap::Args, Clone, Debug)]
 pub(crate) struct NormalizeArgs {
     #[command(flatten)]

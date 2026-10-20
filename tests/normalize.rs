@@ -311,7 +311,7 @@ fn check_normalized_never_writes() {
 
 #[test]
 fn normalize_writes_by_default_and_prints_nothing_as_the_gem_does() {
-    // ref: lib/i18n/tasks/command/commands/data.rb:16-22
+    // ref: lib/i18n/tasks/command/commands/data.rb:14-22
     let p = Project::new("by-default", SIMPLE);
     p.write("config/locales/en.yml", "en:\n  b: B\n  a: A\n");
     let (code, text) = p.run(&["normalize"]);
@@ -324,23 +324,24 @@ fn normalize_writes_by_default_and_prints_nothing_as_the_gem_does() {
 
 #[test]
 fn normalize_takes_the_gems_spelling_of_the_pattern_router_flag() {
-    let p = Project::new("underscore-flag", SIMPLE);
-    p.write("config/locales/en.yml", "en:\n  b: B\n  a: A\n");
-    let (code, text) = p.run(&["normalize", "--pattern_router"]);
-    assert_eq!(code, 0, "{text}");
-    assert_eq!(
-        p.read("config/locales/en.yml"),
-        "---\nen:\n  a: A\n  b: B\n"
+    let p = Project::new("underscore-flag", PATTERN_CONFIG);
+    p.write(
+        "config/locales/base.en.yml",
+        "en:\n  views:\n    home:\n      title: T\n",
     );
+    let (code, text) = p.run(&["normalize", "--pattern_router", "--allow-delete"]);
+    assert_eq!(code, 0, "{text}");
+    assert!(p.exists("config/locales/views.en.yml"));
+    assert!(!p.exists("config/locales/base.en.yml"));
 }
 
 #[test]
-fn write_is_no_longer_a_flag() {
+fn normalize_rejects_a_write_flag() {
     let p = Project::new("no-write-flag", SIMPLE);
     p.write("config/locales/en.yml", "en:\n  a: A\n");
     let (code, text) = p.run(&["normalize", "--write"]);
     assert_eq!(code, 2, "{text}");
-    assert!(text.contains("unexpected argument '--write'"), "{text}");
+    assert_eq!(p.read("config/locales/en.yml"), "en:\n  a: A\n");
 }
 
 #[test]
@@ -945,7 +946,7 @@ fn normalize_emits_json() {
 }
 
 /// The deletion list is printed whether or not the run may act on it, so a
-/// `--dry-run` shows what a `--write` would remove.
+/// `--dry-run` shows what a plain run would remove.
 #[test]
 fn a_dry_run_still_lists_the_deletions() {
     let p = Project::new(

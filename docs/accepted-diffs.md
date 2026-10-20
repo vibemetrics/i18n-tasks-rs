@@ -588,7 +588,7 @@ directory is added only when a file under it uses a relative key. Blocker B6 and
 accepted difference 3 make relative roots load-bearing here, and a wrong list is
 worse than a short one.
 
-Writing stays opt-in (blocker B8, difference 23): without `--write` the config
+Writing stays opt-in (blocker B8): without `--write` the config
 goes to stdout, and `--write` never replaces an existing file without `--force`.
 When the project still has a gem config the command says so and exits 1, because
 `migrate-config` keeps the ignore lists and this command has none of them.
@@ -823,7 +823,7 @@ interpolation without a word.
 - Only base-to-locale keys are translated. With the base among the locales,
   the gem's `missing_diff_forest` (`missing_keys.rb:44-48`) also sends keys
   that another locale has and the base lacks.
-- It writes without `--write`, as the gem does: the exception to B8. With
+- It writes without `--write`, as the gem does: an exception to B8. With
   something to translate and no key it fails before any request. It prints
   the translated keys as a table or the `-f json` envelope, not the gem's
   YAML tree.
