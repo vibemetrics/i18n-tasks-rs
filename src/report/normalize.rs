@@ -204,7 +204,7 @@ pub fn plan_files(
                 ));
             }
             claimed.insert(dest.path.clone(), locale.clone());
-            check_foreign_locales(tree, &dest.path, locale)?;
+            check_foreign_locales(store, &dest.path, locale)?;
 
             let mut leaves = Vec::with_capacity(dest.keys.len());
             for key in &dest.keys {
@@ -253,7 +253,7 @@ pub fn plan_files(
             if written.contains(&path) || !only(&path) {
                 continue;
             }
-            check_foreign_locales(tree, &path, locale)?;
+            check_foreign_locales(store, &path, locale)?;
             changes.push(FileChange {
                 display: display_path(cfg, &path),
                 locale: locale.clone(),
@@ -274,19 +274,19 @@ pub fn plan_files(
     })
 }
 
-fn check_foreign_locales(
-    tree: &crate::data::load::LocaleTree,
-    path: &Path,
-    locale: &str,
-) -> Result<(), String> {
-    let Some(found) = tree.file_locales.get(path) else {
-        return Ok(());
-    };
-    let foreign: Vec<&str> = found
+/// Every locale's read is consulted, not only `locale`'s: a file this locale
+/// never read, such as the base locale's, can still be its destination.
+fn check_foreign_locales(store: &Store, path: &Path, locale: &str) -> Result<(), String> {
+    let mut foreign: Vec<&str> = store
+        .locales
         .iter()
+        .filter_map(|l| store.tree(l)?.file_locales.get(path))
+        .flatten()
         .map(String::as_str)
         .filter(|l| *l != locale)
         .collect();
+    foreign.sort_unstable();
+    foreign.dedup();
     if foreign.is_empty() {
         return Ok(());
     }

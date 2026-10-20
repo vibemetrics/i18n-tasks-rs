@@ -334,6 +334,26 @@ fn an_untouched_file_holding_two_locales_does_not_block_the_write() {
 }
 
 #[test]
+fn a_new_key_is_never_written_into_another_locales_file() {
+    let p = project("foreign-file");
+    let en = "en:\n  greeting: Hello\n";
+    p.write(
+        "config/i18n-tasks.yml",
+        "base_locale: en\nlocales: [en, de]\ndata:\n  read:\n    - config/locales/app_%{locale}.yml\n  write:\n    - config/locales/app_%{locale}.yml\nsearch:\n  paths: [app/]\n",
+    )
+    .write("config/locales/app_en.yml", en);
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
+    assert_eq!(code, 2, "{out}");
+    assert!(out.contains("app_en.yml"), "{out}");
+    assert_eq!(p.read("config/locales/app_en.yml"), en);
+}
+
+#[test]
 fn the_pattern_router_places_new_keys_and_moves_no_existing_one() {
     let p = project("pattern-router");
     p.write(
