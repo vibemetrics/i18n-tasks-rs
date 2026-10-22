@@ -23,11 +23,8 @@ impl TranslateMissingArgs {
             let client = client()?;
             for LocaleLeaves { locale, leaves } in pending {
                 errln!("{locale}: translating {} key(s)", leaves.len());
-                let result = translate::translate(
-                    &leaves,
-                    |key| s.store.tree(&from).is_some_and(|t| t.is_plural_node(key)),
-                    |batch| client.translate(batch, &from, &locale),
-                );
+                let result =
+                    translate::translate(&leaves, |batch| client.translate(batch, &from, &locale));
                 for failure in &result.failures {
                     errln!(
                         "{locale}: cannot translate {}: {}",

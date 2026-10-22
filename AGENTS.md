@@ -18,7 +18,9 @@ documents to read before changing anything non-trivial:
   is deliberately dropped. Source comments cite these by number
   ("design decision 2", "blocker B5").
 - `docs/accepted-diffs.md` — every deliberate difference from the gem, numbered.
-  If you introduce a new one, add an entry in the same commit.
+  An agent never adds one on its own. A new difference from the gem needs a
+  human's decision, recorded in the ticket, before any code; without one,
+  match the gem and ask.
 
 The gem is not vendored here. Differential work needs a local checkout of it;
 `i18n-tasks-rs find -f json` exists so the two tools' occurrence sets can be

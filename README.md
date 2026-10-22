@@ -110,10 +110,6 @@ write unless `--write` is present; `normalize`, `translate-missing` and
 | `OPENAI_REASONING_EFFORT` | not sent | sent as `reasoning_effort`; on Ollama's endpoint `none` turns thinking off for models that allow it |
 | `OPENAI_TIMEOUT` | `120` | the request timeout, in seconds |
 
-A plural form may come back with fewer of its source's variables (Arabic
-carries the number in the noun's form), never with one its source lacks. Every
-other key keeps exactly its source's variables.
-
 ## Config syntax
 
 ```yaml

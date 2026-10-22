@@ -840,13 +840,11 @@ interpolation without a word.
   alone. The gem sends HTML keys and plain keys in separate slices; its OpenAI
   backend gives both the same options, so here they share a request.
 - Nothing untranslated is written. A request that fails or answers with
-  another number of strings fails its keys; a value that comes back with
-  other interpolation variables than its source fails its own key, and a
-  plural form that fails fails its sibling forms too. A plural form may use a
-  subset of its source's variables, as Arabic drops `%{count}` where the
-  noun's form carries the number; a variable the source lacks still fails
-  it. Failed keys stay missing for the next run, the error is printed per
-  locale, and the command exits 2 after it writes what succeeded.
+  another number of strings fails its keys, and so does a value that comes
+  back with a `X__n` its source does not have. Failed keys stay missing for
+  the next run, the error is printed per locale, and the command exits 2
+  after it writes what succeeded. The interpolation variables are written as
+  the model returns them, as the gem does.
 - Only the files that receive a key are written, in the normalized form, as
   `normalize` writes them. The configured router places each new key;
   every existing key stays in its file, while the gem's pattern router moves
