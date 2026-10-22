@@ -120,7 +120,7 @@ impl FakeOpenAi {
                     body: body.clone(),
                 });
                 let (status, reply) = reply_to(&body);
-                if body.to_string().contains(SLOW_VALUE) {
+                if sent_values(&body).iter().any(|v| v == SLOW_VALUE) {
                     std::thread::sleep(SLOW_REPLY);
                 }
                 let response = format!(
@@ -138,6 +138,10 @@ impl FakeOpenAi {
     }
 }
 
+fn sent_values(body: &serde_json::Value) -> Vec<String> {
+    serde_json::from_str(body["messages"][2]["content"].as_str().unwrap()).unwrap()
+}
+
 fn reply_to(body: &serde_json::Value) -> (&'static str, String) {
     let system = body["messages"][0]["content"].as_str().unwrap();
     let language = system
@@ -145,8 +149,7 @@ fn reply_to(body: &serde_json::Value) -> (&'static str, String) {
         .nth(1)
         .and_then(|rest| rest.split(" locale").next())
         .unwrap();
-    let values: Vec<String> =
-        serde_json::from_str(body["messages"][2]["content"].as_str().unwrap()).unwrap();
+    let values = sent_values(body);
     if values.iter().any(|v| v == FAILING_VALUE) {
         return (
             "500 Internal Server Error",

@@ -107,12 +107,12 @@ write unless `--write` is present; `normalize`, `translate-missing` and
 | `OPENAI_API_KEY` | (required) | the API key |
 | `OPENAI_MODEL` | `gpt-4o-mini` | the model |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | another OpenAI-compatible endpoint |
-| `OPENAI_REASONING_EFFORT` | not sent | sent as `reasoning_effort`; `none` turns thinking off on Ollama's endpoint |
+| `OPENAI_REASONING_EFFORT` | not sent | sent as `reasoning_effort`; on Ollama's endpoint `none` turns thinking off for models that allow it |
 | `OPENAI_TIMEOUT` | `120` | the request timeout, in seconds |
 
-A plural form may come back with fewer of its key's variables (Arabic carries
-the number in the noun's form), never with one the key lacks. Every other key
-keeps exactly its source's variables.
+A plural form may come back with fewer of its source's variables (Arabic
+carries the number in the noun's form), never with one its source lacks. Every
+other key keeps exactly its source's variables.
 
 ## Config syntax
 
