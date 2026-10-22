@@ -48,7 +48,7 @@ Library uses some "tricks" - like early files _discovery_ to skip work when it's
 - `normalize` - yet it will yield slightly different yaml format than gem! also see `--pattern-router` / `--allow-delete` switches
 - `# i18n-tasks-use` comment hints (might cause some quirks, feel feel free to report any issues)
 - `data` and `data-merge` with `-f json` - the gem's JSON in and out
-- `translate-missing` through OpenAI - the key and the model come from `OPENAI_API_KEY` and `OPENAI_MODEL` (default `gpt-4o-mini`); `OPENAI_BASE_URL` points it at another OpenAI-compatible endpoint
+- `translate-missing` through OpenAI or any OpenAI-compatible endpoint, configured from the [environment](#translate-missing-environment)
 
 ## What was added
 - `clean-config` - cleans stale `ignore`, `ignore_missing`, `ignore_unused`, `ignore_eq_base`, and `interpolation-ignore` rules
@@ -99,6 +99,20 @@ JSON envelope on every command but `data` and `data-merge`. `remove-unused` and 
 write unless `--write` is present; `normalize`, `translate-missing` and
 `data-merge` write, as the gem's do. Use each command's
 `--help` output as the complete option reference.
+
+## `translate-missing` environment
+
+| Variable | Default | What |
+|---|---|---|
+| `OPENAI_API_KEY` | (required) | the API key |
+| `OPENAI_MODEL` | `gpt-4o-mini` | the model |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | another OpenAI-compatible endpoint |
+| `OPENAI_REASONING_EFFORT` | not sent | sent as `reasoning_effort`; `none` turns thinking off on Ollama's endpoint |
+| `OPENAI_TIMEOUT` | `120` | the request timeout, in seconds |
+
+A plural form may come back with fewer of its key's variables (Arabic carries
+the number in the noun's form), never with one the key lacks. Every other key
+keeps exactly its source's variables.
 
 ## Config syntax
 

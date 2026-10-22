@@ -2,8 +2,9 @@ use crate::cli::args::Common;
 use crate::cli::exit::ExitStatus;
 use crate::cli::out::{errln, out, outln};
 use i18n_tasks_rs::report::normalize;
-use i18n_tasks_rs::translate::openai::{DEFAULT_BASE_URL, DEFAULT_MODEL, OpenAi};
+use i18n_tasks_rs::translate::openai::{DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_TIMEOUT, OpenAi};
 use i18n_tasks_rs::translate::{self, LocaleLeaves};
+use std::time::Duration;
 
 #[derive(clap::Args, Clone, Debug)]
 pub(crate) struct TranslateMissingArgs {
@@ -64,7 +65,19 @@ fn client() -> Result<OpenAi, String> {
         env("OPENAI_API_KEY").ok_or("translating needs an OpenAI API key in OPENAI_API_KEY")?;
     let model = env("OPENAI_MODEL").unwrap_or_else(|| DEFAULT_MODEL.to_string());
     let base_url = env("OPENAI_BASE_URL").unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
-    Ok(OpenAi::new(&base_url, key, model))
+    let timeout = match env("OPENAI_TIMEOUT") {
+        None => DEFAULT_TIMEOUT,
+        Some(secs) => Duration::from_secs(secs.parse().map_err(|_| {
+            format!("OPENAI_TIMEOUT must be a whole number of seconds, not `{secs}`")
+        })?),
+    };
+    Ok(OpenAi::new(
+        &base_url,
+        key,
+        model,
+        env("OPENAI_REASONING_EFFORT"),
+        timeout,
+    ))
 }
 
 fn env(name: &str) -> Option<String> {

@@ -66,8 +66,10 @@ enum Command {
     Normalize(NormalizeArgs),
     /// Translate the keys the base locale has and a locale lacks, through OpenAI.
     ///
-    /// Reads OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini) and
-    /// OPENAI_BASE_URL. Writes the translations, as the gem does.
+    /// Reads OPENAI_API_KEY, OPENAI_MODEL (default gpt-4o-mini),
+    /// OPENAI_BASE_URL, OPENAI_REASONING_EFFORT (unset: not sent) and
+    /// OPENAI_TIMEOUT (seconds, default 120). Writes the translations, as the
+    /// gem does.
     TranslateMissing(TranslateMissingArgs),
     /// Print the locales' data: YAML, or the gem's JSON under `-f json`.
     Data(DataArgs),

@@ -48,7 +48,9 @@ impl Project {
             .arg(&self.root)
             .env_remove("OPENAI_API_KEY")
             .env_remove("OPENAI_MODEL")
-            .env_remove("OPENAI_BASE_URL");
+            .env_remove("OPENAI_BASE_URL")
+            .env_remove("OPENAI_REASONING_EFFORT")
+            .env_remove("OPENAI_TIMEOUT");
         for (k, v) in env {
             cmd.env(k, v);
         }
@@ -72,10 +74,13 @@ struct Request {
 }
 
 const FAILING_VALUE: &str = "FAIL";
+const SLOW_VALUE: &str = "SLOW";
+const SLOW_REPLY: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// A chat-completions endpoint that "translates" each string by prefixing the
 /// target language name from the system prompt. A batch that holds
-/// `FAILING_VALUE` gets an HTTP 500.
+/// `FAILING_VALUE` gets an HTTP 500; one that holds `SLOW_VALUE` is answered
+/// after `SLOW_REPLY`.
 struct FakeOpenAi {
     url: String,
     requests: Arc<Mutex<Vec<Request>>>,
@@ -115,11 +120,14 @@ impl FakeOpenAi {
                     body: body.clone(),
                 });
                 let (status, reply) = reply_to(&body);
+                if body.to_string().contains(SLOW_VALUE) {
+                    std::thread::sleep(SLOW_REPLY);
+                }
                 let response = format!(
                     "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
                     reply.len()
                 );
-                stream.write_all(response.as_bytes()).unwrap();
+                let _ = stream.write_all(response.as_bytes());
             }
         });
         FakeOpenAi { url, requests }
@@ -264,6 +272,71 @@ fn the_model_defaults_to_gpt_4o_mini() {
         p.read("config/locales/de.yml"),
         "de:\n  greeting: Hallo, %{name}!\n"
     );
+}
+
+#[test]
+fn the_reasoning_effort_is_sent_only_when_set() {
+    let p = project("reasoning-effort");
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
+    assert_eq!(code, 0, "{out}");
+    let (code, out) = p.run(
+        &["translate-missing", "fi"],
+        &[env[0], env[1], ("OPENAI_REASONING_EFFORT", "none")],
+    );
+    assert_eq!(code, 0, "{out}");
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(
+        requests[0].body.get("reasoning_effort").is_none(),
+        "{}",
+        requests[0].body
+    );
+    assert_eq!(requests[1].body["reasoning_effort"], "none");
+}
+
+#[test]
+fn the_timeout_comes_from_openai_timeout() {
+    let p = project("timeout");
+    p.write(
+        "config/locales/en.yml",
+        &format!("en:\n  slow: {SLOW_VALUE}\n"),
+    );
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+    ];
+    let (code, out) = p.run(
+        &["translate-missing", "de"],
+        &[env[0], env[1], ("OPENAI_TIMEOUT", "1")],
+    );
+    assert_eq!(code, 2, "{out}");
+    assert!(out.contains("timeout"), "{out}");
+    assert!(!p.read("config/locales/de.yml").contains("slow"));
+
+    let (code, out) = p.run(&["translate-missing", "de"], &env);
+    assert_eq!(code, 0, "the default outwaits a slow answer: {out}");
+    assert!(p.read("config/locales/de.yml").contains("German: SLOW"));
+}
+
+#[test]
+fn a_timeout_that_is_not_a_number_of_seconds_fails_before_any_request() {
+    let p = project("bad-timeout");
+    let server = FakeOpenAi::start();
+    let env = [
+        ("OPENAI_API_KEY", "sk-test"),
+        ("OPENAI_BASE_URL", server.url.as_str()),
+        ("OPENAI_TIMEOUT", "2m"),
+    ];
+    let (code, out) = p.run(&["translate-missing"], &env);
+    assert_eq!(code, 2, "{out}");
+    assert!(out.contains("OPENAI_TIMEOUT"), "{out}");
+    assert!(server.requests().is_empty());
 }
 
 #[test]

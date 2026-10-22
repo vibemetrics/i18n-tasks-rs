@@ -815,6 +815,11 @@ interpolation without a word.
   is the gem's: its default system prompt, temperature 0, a JSON object
   answer, `%{x}` sent as `X__n`. `OPENAI_BASE_URL` (default
   `https://api.openai.com/v1`) has no gem counterpart.
+- Two more variables have no gem counterpart. `OPENAI_REASONING_EFFORT`, when
+  set, adds `reasoning_effort` to the request; unset, the request is the
+  gem's, since gpt-4o rejects the parameter. `OPENAI_TIMEOUT` is the request
+  timeout in seconds, default 120, ruby-openai's `request_timeout`; slow
+  models on OpenAI-compatible endpoints need more.
   `openai_system_prompt`, `openai_locale_prompts`, `openai_temperature`,
   `--from`, `--pattern` and `--backend` are not ported.
 - Every request carries the JSON instruction once. The gem's
@@ -837,7 +842,10 @@ interpolation without a word.
 - Nothing untranslated is written. A request that fails or answers with
   another number of strings fails its keys; a value that comes back with
   other interpolation variables than its source fails its own key, and a
-  plural form that fails fails its sibling forms too. Failed keys stay
+  plural form that fails fails its sibling forms too. A plural form may use a
+  subset of its source's variables, as Arabic drops `%{count}` where the
+  noun's form carries the number; a variable the source lacks still fails
+  it. Failed keys stay
   missing for the next run, the error is printed per locale, and
   the command exits 2 after it writes what succeeded.
 - Only the files that receive a key are written, in the normalized form, as

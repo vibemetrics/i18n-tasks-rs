@@ -142,7 +142,8 @@ pub fn translate(
         for (i, strings) in &batch {
             let leaf = &leaves[*i];
             let own: Vec<String> = received.by_ref().take(strings.len()).collect();
-            match implode(&leaf.value, &mut own.into_iter()) {
+            let plural_form = parent_key(&leaf.key).is_some_and(&is_plural);
+            match implode(&leaf.value, &mut own.into_iter(), plural_form) {
                 Ok(value) => done.push((
                     *i,
                     Leaf {
@@ -205,24 +206,28 @@ fn dump(value: &Value, out: &mut Vec<String>) {
     }
 }
 
-fn implode(value: &Value, translated: &mut impl Iterator<Item = String>) -> Result<Value, String> {
+fn implode(
+    value: &Value,
+    translated: &mut impl Iterator<Item = String>,
+    plural_form: bool,
+) -> Result<Value, String> {
     Ok(match value {
         Value::Str(s) if !s.is_empty() => {
             let text = translated
                 .next()
                 .ok_or_else(|| "fewer translations than strings".to_string())?;
-            Value::Str(restore(s, &text)?)
+            Value::Str(restore(s, &text, plural_form)?)
         }
         Value::Seq(items) => Value::Seq(
             items
                 .iter()
-                .map(|v| implode(v, translated))
+                .map(|v| implode(v, translated, plural_form))
                 .collect::<Result<_, _>>()?,
         ),
         Value::Map(entries) => Value::Map(
             entries
                 .iter()
-                .map(|(k, v)| Ok((k.clone(), implode(v, translated)?)))
+                .map(|(k, v)| Ok((k.clone(), implode(v, translated, plural_form)?)))
                 .collect::<Result<_, String>>()?,
         ),
         other => other.clone(),
@@ -253,7 +258,7 @@ fn protect(value: &str) -> String {
 
 /// ref: base_translator.rb#restore_interpolations. The variable check is ours:
 /// accepted diff 34.
-fn restore(source: &str, translated: &str) -> Result<String, String> {
+fn restore(source: &str, translated: &str, plural_form: bool) -> Result<String, String> {
     let originals: Vec<&str> = INTERPOLATION
         .find_iter(source)
         .map(|m| m.as_str())
@@ -280,7 +285,12 @@ fn restore(source: &str, translated: &str) -> Result<String, String> {
     };
     let expected: BTreeSet<&str> = variables(source).into_iter().collect();
     let got: BTreeSet<&str> = variables(&restored).into_iter().collect();
-    if expected != got {
+    let accepted = if plural_form {
+        got.is_subset(&expected)
+    } else {
+        got == expected
+    };
+    if !accepted {
         return Err(format!(
             "`{source}` came back as `{restored}`, with other interpolation variables"
         ));
@@ -405,16 +415,26 @@ mod tests {
     fn interpolations_travel_as_numbered_placeholders() {
         assert_eq!(protect("Hi %{name}, %{count} new"), "Hi X__0, X__1 new");
         assert_eq!(
-            restore("Hi %{name}, %{count} new", "X__1 uutta, hei X__0").unwrap(),
+            restore("Hi %{name}, %{count} new", "X__1 uutta, hei X__0", false).unwrap(),
             "%{count} uutta, hei %{name}"
         );
     }
 
     #[test]
     fn a_lost_or_unknown_placeholder_fails_the_value() {
-        assert!(restore("Hi %{name}", "Hei").is_err());
-        assert!(restore("Hi %{name}", "Hei X__3").is_err());
-        assert!(restore("Hi", "Hei %{name}").is_err());
+        assert!(restore("Hi %{name}", "Hei", false).is_err());
+        assert!(restore("Hi %{name}", "Hei X__3", false).is_err());
+        assert!(restore("Hi", "Hei %{name}", false).is_err());
+    }
+
+    #[test]
+    fn a_plural_form_may_lose_a_variable_but_never_gain_one() {
+        assert_eq!(
+            restore("%{count} apples", "تفاحة واحدة", true).unwrap(),
+            "تفاحة واحدة"
+        );
+        assert!(restore("%{count} apples", "%{total} تفاحة", true).is_err());
+        assert!(restore("%{count} apples", "X__0 تفاحة %{name}", true).is_err());
     }
 
     #[test]
@@ -572,7 +592,12 @@ mod tests {
         let out = translate(
             &leaves,
             |key| key == "apples",
-            |batch| Ok(batch.iter().map(|v| v.replace("X__0", "many")).collect()),
+            |batch| {
+                Ok(batch
+                    .iter()
+                    .map(|v| v.replace("X__0", "%{total}"))
+                    .collect())
+            },
         );
         let failed: Vec<&str> = out
             .failures
@@ -582,6 +607,33 @@ mod tests {
         assert_eq!(failed, ["apples.other", "apples.one"]);
         let written: Vec<&str> = out.leaves.iter().map(|l| l.key.as_str()).collect();
         assert_eq!(written, ["pear"]);
+    }
+
+    #[test]
+    fn a_plural_form_may_drop_a_variable_of_its_source() {
+        let leaves = [
+            leaf("reminders.one", s("%{name} has %{count} reminder left")),
+            leaf("reminders.other", s("%{name} has %{count} reminders left")),
+        ];
+        let out = translate(
+            &leaves,
+            |key| key == "reminders",
+            |batch| {
+                Ok(batch
+                    .iter()
+                    .map(|v| v.replace("has X__1 reminder ", "has one reminder "))
+                    .collect())
+            },
+        );
+        assert!(out.failures.is_empty(), "{:?}", out.failures);
+        let values: Vec<&Value> = out.leaves.iter().map(|l| &l.value).collect();
+        assert_eq!(
+            values,
+            [
+                &s("%{name} has one reminder left"),
+                &s("%{name} has %{count} reminders left"),
+            ]
+        );
     }
 
     #[test]
