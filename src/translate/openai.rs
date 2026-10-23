@@ -14,13 +14,14 @@ const SYSTEM_PROMPT: &str = "You are a professional translator that translates c
 const JSON_FORMAT_PROMPT: &str = "Return the translations as a JSON object with a 'translations' array containing the translated strings.";
 
 /// ruby-openai's default `request_timeout`.
-const TIMEOUT: Duration = Duration::from_secs(120);
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct OpenAi {
     agent: ureq::Agent,
     url: String,
     key: String,
     model: String,
+    reasoning_effort: Option<String>,
 }
 
 impl std::fmt::Debug for OpenAi {
@@ -33,10 +34,16 @@ impl std::fmt::Debug for OpenAi {
 }
 
 impl OpenAi {
-    pub fn new(base_url: &str, key: String, model: String) -> OpenAi {
+    pub fn new(
+        base_url: &str,
+        key: String,
+        model: String,
+        reasoning_effort: Option<String>,
+        timeout: Duration,
+    ) -> OpenAi {
         let agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
-            .timeout_global(Some(TIMEOUT))
+            .timeout_global(Some(timeout))
             .build()
             .into();
         OpenAi {
@@ -44,6 +51,7 @@ impl OpenAi {
             url: format!("{}/chat/completions", base_url.trim_end_matches('/')),
             key,
             model,
+            reasoning_effort,
         }
     }
 
@@ -61,7 +69,13 @@ impl OpenAi {
             .agent
             .post(&self.url)
             .header("Authorization", &format!("Bearer {}", self.key))
-            .send_json(request(&self.model, values, from, to))
+            .send_json(request(
+                &self.model,
+                self.reasoning_effort.as_deref(),
+                values,
+                from,
+                to,
+            ))
             .map_err(|e| format!("cannot reach OpenAI: {e}"))?;
         let status = response.status().as_u16();
         let body = response
@@ -72,11 +86,17 @@ impl OpenAi {
     }
 }
 
-pub fn request(model: &str, values: &[String], from: &str, to: &str) -> Value {
+pub fn request(
+    model: &str,
+    reasoning_effort: Option<&str>,
+    values: &[String],
+    from: &str,
+    to: &str,
+) -> Value {
     let system = format!("{SYSTEM_PROMPT}\n{JSON_FORMAT_PROMPT}")
         .replace("%{from}", &language_name(from))
         .replace("%{to}", &language_name(to));
-    json!({
+    let mut body = json!({
         "model": model,
         "messages": [
             { "role": "system", "content": system },
@@ -85,7 +105,11 @@ pub fn request(model: &str, values: &[String], from: &str, to: &str) -> Value {
         ],
         "temperature": 0.0,
         "response_format": { "type": "json_object" },
-    })
+    });
+    if let Some(effort) = reasoning_effort {
+        body["reasoning_effort"] = effort.into();
+    }
+    body
 }
 
 /// # Errors
@@ -125,7 +149,13 @@ mod tests {
 
     #[test]
     fn the_request_is_the_gems_three_messages() {
-        let body = request("gpt-4o", &["Hello, X__0".into(), "Bye".into()], "en", "fi");
+        let body = request(
+            "gpt-4o",
+            None,
+            &["Hello, X__0".into(), "Bye".into()],
+            "en",
+            "fi",
+        );
         assert_eq!(body["model"], "gpt-4o");
         let system = body["messages"][0]["content"].as_str().unwrap();
         assert!(system.starts_with(
@@ -142,7 +172,7 @@ mod tests {
 
     #[test]
     fn an_unknown_locale_is_named_as_written() {
-        let body = request("m", &[], "en", "fi-easy");
+        let body = request("m", None, &[], "en", "fi-easy");
         let system = body["messages"][0]["content"].as_str().unwrap();
         assert!(system.contains("to the fi-easy locale"), "{system}");
     }

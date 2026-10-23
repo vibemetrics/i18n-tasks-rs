@@ -10,14 +10,12 @@ pub mod openai;
 use crate::config::{Config, DataConfig, IgnoreType, Router};
 use crate::data::load::{Leaf, Store, Value};
 use crate::data::route;
-use crate::keys::parent_key;
-use crate::report::interpolations::variables;
 use crate::report::missing::diff_leaves;
 use crate::report::normalize::{self, NormalizeReport};
 use crate::report::{KeyRow, render_table};
 use crate::session::Session;
 use regex::Regex;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 /// ref: openai_translator.rb:11
@@ -87,7 +85,6 @@ pub fn pending(cfg: &Config, store: &Store, locales: &[String]) -> Vec<LocaleLea
 /// ref: base_translator.rb#translate_pairs
 pub fn translate(
     leaves: &[Leaf],
-    is_plural: impl Fn(&str) -> bool,
     mut call: impl FnMut(&[String]) -> Result<Vec<String>, String>,
 ) -> Translated {
     let mut done: Vec<(usize, Leaf)> = Vec::with_capacity(leaves.len());
@@ -156,20 +153,6 @@ pub fn translate(
                 }),
             }
         }
-    }
-    let broken: HashSet<&str> = failures
-        .iter()
-        .flat_map(|f| &f.keys)
-        .filter_map(|key| parent_key(key).filter(|p| is_plural(p)))
-        .collect();
-    let (siblings, mut done): (Vec<_>, Vec<_>) = done
-        .into_iter()
-        .partition(|(_, leaf)| parent_key(&leaf.key).is_some_and(|p| broken.contains(p)));
-    if !siblings.is_empty() {
-        failures.push(Failure {
-            keys: siblings.into_iter().map(|(_, leaf)| leaf.key).collect(),
-            error: "another form of the same plural key failed".to_string(),
-        });
     }
     done.sort_by_key(|(i, _)| *i);
     Translated {
@@ -251,41 +234,31 @@ fn protect(value: &str) -> String {
         .into_owned()
 }
 
-/// ref: base_translator.rb#restore_interpolations. The variable check is ours:
-/// accepted diff 34.
+/// ref: base_translator.rb#restore_interpolations
 fn restore(source: &str, translated: &str) -> Result<String, String> {
     let originals: Vec<&str> = INTERPOLATION
         .find_iter(source)
         .map(|m| m.as_str())
         .collect();
-    let restored = if originals.is_empty() {
-        translated.to_string()
-    } else {
-        let mut unknown = None;
-        let out = PLACEHOLDER.replace_all(translated, |c: &regex::Captures<'_>| {
-            match c[1].parse::<usize>().ok().and_then(|i| originals.get(i)) {
-                Some(original) => (*original).to_string(),
-                None => {
-                    unknown = Some(c[0].to_string());
-                    c[0].to_string()
-                }
+    if originals.is_empty() {
+        return Ok(translated.to_string());
+    }
+    let mut unknown = None;
+    let out = PLACEHOLDER.replace_all(translated, |c: &regex::Captures<'_>| {
+        match c[1].parse::<usize>().ok().and_then(|i| originals.get(i)) {
+            Some(original) => (*original).to_string(),
+            None => {
+                unknown = Some(c[0].to_string());
+                c[0].to_string()
             }
-        });
-        if let Some(placeholder) = unknown {
-            return Err(format!(
-                "`{source}` came back as `{translated}`, with the unknown placeholder `{placeholder}`"
-            ));
         }
-        out.into_owned()
-    };
-    let expected: BTreeSet<&str> = variables(source).into_iter().collect();
-    let got: BTreeSet<&str> = variables(&restored).into_iter().collect();
-    if expected != got {
+    });
+    if let Some(placeholder) = unknown {
         return Err(format!(
-            "`{source}` came back as `{restored}`, with other interpolation variables"
+            "`{source}` came back as `{translated}`, with the unknown placeholder `{placeholder}`"
         ));
     }
-    Ok(restored)
+    Ok(out.into_owned())
 }
 
 /// Adds the translations to `store` and plans the files that receive them.
@@ -411,10 +384,20 @@ mod tests {
     }
 
     #[test]
-    fn a_lost_or_unknown_placeholder_fails_the_value() {
-        assert!(restore("Hi %{name}", "Hei").is_err());
+    fn an_unknown_placeholder_fails_the_value() {
         assert!(restore("Hi %{name}", "Hei X__3").is_err());
-        assert!(restore("Hi", "Hei %{name}").is_err());
+    }
+
+    #[test]
+    fn the_translation_keeps_the_variables_it_came_back_with() {
+        assert_eq!(
+            restore("%{count} apples", "تفاحة واحدة").unwrap(),
+            "تفاحة واحدة"
+        );
+        assert_eq!(
+            restore("One apple", "%{count} яблоко").unwrap(),
+            "%{count} яблоко"
+        );
     }
 
     #[test]
@@ -430,14 +413,10 @@ mod tests {
             ),
         ];
         let mut calls = 0;
-        let out = translate(
-            &leaves,
-            |_| false,
-            |batch| {
-                calls += 1;
-                Ok(upcase(batch))
-            },
-        );
+        let out = translate(&leaves, |batch| {
+            calls += 1;
+            Ok(upcase(batch))
+        });
         assert_eq!(calls, 1);
         assert!(out.failures.is_empty());
         let values: Vec<&Value> = out.leaves.iter().map(|l| &l.value).collect();
@@ -459,14 +438,10 @@ mod tests {
         leaves.push(leaf("list", Value::Seq(vec![s("a"), s("b")])));
         leaves.push(leaf("last", s("v")));
         let mut sizes = Vec::new();
-        let out = translate(
-            &leaves,
-            |_| false,
-            |batch| {
-                sizes.push(batch.len());
-                Ok(upcase(batch))
-            },
-        );
+        let out = translate(&leaves, |batch| {
+            sizes.push(batch.len());
+            Ok(upcase(batch))
+        });
         assert_eq!(sizes, [49, 3]);
         assert_eq!(out.leaves.len(), 51);
     }
@@ -475,18 +450,14 @@ mod tests {
     fn a_failed_batch_drops_only_its_own_keys() {
         let leaves: Vec<Leaf> = (0..60).map(|i| leaf(&format!("k{i:02}"), s("v"))).collect();
         let mut call = 0;
-        let out = translate(
-            &leaves,
-            |_| false,
-            |batch| {
-                call += 1;
-                if call == 1 {
-                    Ok(vec!["short".into()])
-                } else {
-                    Ok(upcase(batch))
-                }
-            },
-        );
+        let out = translate(&leaves, |batch| {
+            call += 1;
+            if call == 1 {
+                Ok(vec!["short".into()])
+            } else {
+                Ok(upcase(batch))
+            }
+        });
         assert_eq!(out.failures.len(), 1);
         assert_eq!(out.failures[0].keys.len(), 50);
         assert!(
@@ -499,20 +470,6 @@ mod tests {
     }
 
     #[test]
-    fn a_value_that_loses_a_variable_fails_alone() {
-        let leaves = [leaf("good", s("Hi %{name}")), leaf("bad", s("Bye %{name}"))];
-        let out = translate(
-            &leaves,
-            |_| false,
-            |batch| Ok(batch.iter().map(|v| v.replace("Bye X__0", "Moi")).collect()),
-        );
-        assert_eq!(out.failures.len(), 1);
-        assert_eq!(out.failures[0].keys, ["bad"]);
-        assert_eq!(out.leaves.len(), 1);
-        assert_eq!(out.leaves[0].value, s("Hi %{name}"));
-    }
-
-    #[test]
     fn a_source_with_a_literal_placeholder_and_a_variable_is_refused() {
         let leaves = [
             leaf("device", s("Device X__0 belongs to %{name}")),
@@ -520,14 +477,10 @@ mod tests {
             leaf("tens", s("%{count}0 apples")),
         ];
         let mut sent = Vec::new();
-        let out = translate(
-            &leaves,
-            |_| false,
-            |batch| {
-                sent.extend(batch.iter().cloned());
-                Ok(batch.to_vec())
-            },
-        );
+        let out = translate(&leaves, |batch| {
+            sent.extend(batch.iter().cloned());
+            Ok(batch.to_vec())
+        });
         assert_eq!(sent, ["Code X__0"]);
         let failed: Vec<&str> = out
             .failures
@@ -545,16 +498,12 @@ mod tests {
             leaf("list", Value::Seq(vec![s("Hi %{name}"), s("Bye")])),
             leaf("after", s("Later")),
         ];
-        let out = translate(
-            &leaves,
-            |_| false,
-            |batch| {
-                Ok(batch
-                    .iter()
-                    .map(|v| v.replace("Hi X__0", "Moi").to_uppercase())
-                    .collect())
-            },
-        );
+        let out = translate(&leaves, |batch| {
+            Ok(batch
+                .iter()
+                .map(|v| v.replace("Hi X__0", "Moi X__7").to_uppercase())
+                .collect())
+        });
         assert_eq!(out.failures.len(), 1);
         assert_eq!(out.failures[0].keys, ["list"]);
         assert_eq!(out.leaves.len(), 1);
@@ -563,40 +512,14 @@ mod tests {
     }
 
     #[test]
-    fn a_plural_form_that_fails_takes_its_sibling_forms_with_it() {
-        let leaves = [
-            leaf("apples.one", s("One apple")),
-            leaf("apples.other", s("%{count} apples")),
-            leaf("pear", s("Pear")),
-        ];
-        let out = translate(
-            &leaves,
-            |key| key == "apples",
-            |batch| Ok(batch.iter().map(|v| v.replace("X__0", "many")).collect()),
-        );
-        let failed: Vec<&str> = out
-            .failures
-            .iter()
-            .flat_map(|f| f.keys.iter().map(String::as_str))
-            .collect();
-        assert_eq!(failed, ["apples.other", "apples.one"]);
-        let written: Vec<&str> = out.leaves.iter().map(|l| l.key.as_str()).collect();
-        assert_eq!(written, ["pear"]);
-    }
-
-    #[test]
     fn a_key_with_more_strings_than_a_batch_goes_alone_and_whole() {
         let long = Value::Seq((0..60).map(|i| s(&format!("v{i}"))).collect());
         let leaves = [leaf("short", s("v")), leaf("long", long)];
         let mut sizes = Vec::new();
-        let out = translate(
-            &leaves,
-            |_| false,
-            |batch| {
-                sizes.push(batch.len());
-                Ok(upcase(batch))
-            },
-        );
+        let out = translate(&leaves, |batch| {
+            sizes.push(batch.len());
+            Ok(upcase(batch))
+        });
         assert_eq!(sizes, [1, 60]);
         assert_eq!(out.leaves.len(), 2);
     }

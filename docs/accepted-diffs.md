@@ -817,6 +817,11 @@ interpolation without a word.
   `https://api.openai.com/v1`) has no gem counterpart.
   `openai_system_prompt`, `openai_locale_prompts`, `openai_temperature`,
   `--from`, `--pattern` and `--backend` are not ported.
+- Two more variables have no gem counterpart. `OPENAI_REASONING_EFFORT`, when
+  set, adds `reasoning_effort` to the request; unset, the request is the
+  gem's, since gpt-4o rejects the parameter. `OPENAI_TIMEOUT` is the request
+  timeout in seconds, default 120, ruby-openai's `request_timeout`; slow
+  models on OpenAI-compatible endpoints need more.
 - Every request carries the JSON instruction once. The gem's
   `system_prompt` (`openai_translator.rb:87`) `concat`s it onto the
   `DEFAULT_SYSTEM_PROMPT` constant itself, so the nth request of a run carries
@@ -835,11 +840,11 @@ interpolation without a word.
   alone. The gem sends HTML keys and plain keys in separate slices; its OpenAI
   backend gives both the same options, so here they share a request.
 - Nothing untranslated is written. A request that fails or answers with
-  another number of strings fails its keys; a value that comes back with
-  other interpolation variables than its source fails its own key, and a
-  plural form that fails fails its sibling forms too. Failed keys stay
-  missing for the next run, the error is printed per locale, and
-  the command exits 2 after it writes what succeeded.
+  another number of strings fails its keys, and so does a value that comes
+  back with a `X__n` its source does not have. Failed keys stay missing for
+  the next run, the error is printed per locale, and the command exits 2
+  after it writes what succeeded. The interpolation variables are written as
+  the model returns them, as the gem does.
 - Only the files that receive a key are written, in the normalized form, as
   `normalize` writes them. The configured router places each new key;
   every existing key stays in its file, while the gem's pattern router moves
